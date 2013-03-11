@@ -73,6 +73,7 @@ static char const BASIC_REQUEST_BODY[] = "This is funny";
 static void http_basic_cb(struct evhttp_request *req, void *arg);
 static void http_chunked_cb(struct evhttp_request *req, void *arg);
 static void http_post_cb(struct evhttp_request *req, void *arg);
+static void http_post_cb_huge(struct evhttp_request *req, void *arg);
 static void http_put_cb(struct evhttp_request *req, void *arg);
 static void http_delete_cb(struct evhttp_request *req, void *arg);
 static void http_delay_cb(struct evhttp_request *req, void *arg);
@@ -117,6 +118,7 @@ http_setup(ev_uint16_t *pport, struct event_base *base, int ipv6)
 	evhttp_set_cb(myhttp, "/chunked", http_chunked_cb, base);
 	evhttp_set_cb(myhttp, "/streamed", http_chunked_cb, base);
 	evhttp_set_cb(myhttp, "/postit", http_post_cb, base);
+	evhttp_set_cb(myhttp, "/postithuge", http_post_cb_huge, base);
 	evhttp_set_cb(myhttp, "/putit", http_put_cb, base);
 	evhttp_set_cb(myhttp, "/deleteit", http_delete_cb, base);
 	evhttp_set_cb(myhttp, "/delay", http_delay_cb, base);
@@ -1470,6 +1472,8 @@ http_dispatcher_test(void *arg)
 void http_postrequest_done(struct evhttp_request *, void *);
 
 #define POST_DATA "Okay.  Not really printf"
+#define HUGE_POST_BODY_SIZE (4096 * 1024 * 100)
+static char *huge_post_body;
 
 static void
 http_post_test(void *arg)
@@ -1526,6 +1530,30 @@ http_post_test(void *arg)
 
 	tt_int_op(test_ok, ==, 1);
 
+	test_ok = 0;
+
+	/* Now try with HUGE_POST_BODY_SIZE body */
+
+	req = evhttp_request_new(http_postrequest_done, data->base);
+	tt_assert(req);
+
+	/* Add the information that we care about */
+	evhttp_add_header(evhttp_request_get_output_headers(req), "Host", "somehost");
+
+	huge_post_body = malloc(HUGE_POST_BODY_SIZE);
+	memset(huge_post_body, 1, HUGE_POST_BODY_SIZE);
+	evbuffer_add(evhttp_request_get_output_buffer(req), huge_post_body, HUGE_POST_BODY_SIZE);
+
+	if (evhttp_make_request(evcon, req, EVHTTP_REQ_POST, "/postithuge") == -1) {
+		tt_abort_msg("Couldn't make request");
+	}
+
+	event_base_dispatch(data->base);
+
+	free(huge_post_body);
+
+	tt_int_op(test_ok, ==, 1);
+
 	evhttp_connection_free(evcon);
 	evhttp_free(http);
 
@@ -1555,6 +1583,39 @@ http_post_cb(struct evhttp_request *req, void *arg)
 		fprintf(stdout, "FAILED (data)\n");
 		fprintf(stdout, "Got :%s\n", evbuffer_pullup(evhttp_request_get_input_buffer(req),-1));
 		fprintf(stdout, "Want:%s\n", POST_DATA);
+		exit(1);
+	}
+
+	evb = evbuffer_new();
+	evbuffer_add_printf(evb, BASIC_REQUEST_BODY);
+
+	evhttp_send_reply(req, HTTP_OK, "Everything is fine", evb);
+
+	evbuffer_free(evb);
+}
+
+void
+http_post_cb_huge(struct evhttp_request *req, void *arg)
+{
+	struct evbuffer *evb;
+	event_debug(("%s: called\n", __func__));
+
+	/* Yes, we are expecting a post request */
+	if (evhttp_request_get_command(req) != EVHTTP_REQ_POST) {
+		fprintf(stdout, "FAILED (post type)\n");
+		exit(1);
+	}
+
+	if (evbuffer_get_length(evhttp_request_get_input_buffer(req)) != HUGE_POST_BODY_SIZE) {
+		fprintf(stdout, "FAILED (length: %lu vs %lu)\n",
+		    (unsigned long) evbuffer_get_length(evhttp_request_get_input_buffer(req)), (unsigned long) strlen(POST_DATA));
+		exit(1);
+	}
+
+	if (evbuffer_datacmp(evhttp_request_get_input_buffer(req), huge_post_body) != 0) {
+		fprintf(stdout, "FAILED (data)\n");
+		fprintf(stdout, "Got :%s\n", evbuffer_pullup(evhttp_request_get_input_buffer(req),-1));
+		fprintf(stdout, "Want:%s\n", huge_post_body);
 		exit(1);
 	}
 
