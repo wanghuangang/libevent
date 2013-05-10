@@ -735,19 +735,27 @@ test_common_timeout(void *ptr)
 	struct timeval start;
 	struct timeval tmp_100_ms = { 0, 100*1000 };
 	struct timeval tmp_200_ms = { 0, 200*1000 };
+	struct timeval tmp_5_sec = { 5, 0 };
+	struct timeval tmp_5M_usec = { 0, 5*1000*1000 };
 
-	const struct timeval *ms_100, *ms_200;
+	const struct timeval *ms_100, *ms_200, *sec_5;
 
 	ms_100 = event_base_init_common_timeout(base, &tmp_100_ms);
 	ms_200 = event_base_init_common_timeout(base, &tmp_200_ms);
+	sec_5 = event_base_init_common_timeout(base, &tmp_5_sec);
 	tt_assert(ms_100);
 	tt_assert(ms_200);
+	tt_assert(sec_5);
 	tt_ptr_op(event_base_init_common_timeout(base, &tmp_200_ms),
 	    ==, ms_200);
+	tt_ptr_op(event_base_init_common_timeout(base, ms_200), ==, ms_200);
+	tt_ptr_op(event_base_init_common_timeout(base, &tmp_5M_usec), ==, sec_5);
 	tt_int_op(ms_100->tv_sec, ==, 0);
 	tt_int_op(ms_200->tv_sec, ==, 0);
+	tt_int_op(sec_5->tv_sec, ==, 5);
 	tt_int_op(ms_100->tv_usec, ==, 100000|0x50000000);
 	tt_int_op(ms_200->tv_usec, ==, 200000|0x50100000);
+	tt_int_op(sec_5->tv_usec, ==, 0|0x50200000);
 
 	memset(info, 0, sizeof(info));
 
@@ -1406,6 +1414,19 @@ test_active_later(void *ptr)
 	tt_int_op(n_write_a_byte_cb, >, 100);
 	tt_int_op(n_read_and_drain_cb, >, 100);
 	tt_int_op(n_activate_other_event_cb, >, 100);
+
+	event_active_later_(&ev4, EV_READ);
+	event_active(&ev4, EV_READ, 1); /* This should make the event
+					   active immediately. */
+	tt_assert((ev4.ev_flags & EVLIST_ACTIVE) != 0);
+	tt_assert((ev4.ev_flags & EVLIST_ACTIVE_LATER) == 0);
+
+	/* Now leave this one around, so that event_free sees it and removes
+	 * it. */
+	event_active_later_(&ev3, EV_READ);
+	event_base_assert_ok_(data->base);
+	event_base_free(data->base);
+	data->base = NULL;
 end:
 	;
 }
@@ -2622,6 +2643,200 @@ end:
 	;
 }
 
+static void
+test_get_assignment(void *arg)
+{
+	struct basic_test_data *data = arg;
+	struct event_base *base = data->base;
+	struct event *ev1 = NULL;
+	const char *str = "foo";
+
+	struct event_base *b;
+	evutil_socket_t s;
+	short what;
+	event_callback_fn cb;
+	void *cb_arg;
+
+	ev1 = event_new(base, data->pair[1], EV_READ, dummy_read_cb, (void*)str);
+	event_get_assignment(ev1, &b, &s, &what, &cb, &cb_arg);
+
+	tt_ptr_op(b, ==, base);
+	tt_int_op(s, ==, data->pair[1]);
+	tt_int_op(what, ==, EV_READ);
+	tt_ptr_op(cb, ==, dummy_read_cb);
+	tt_ptr_op(cb_arg, ==, str);
+
+	/* Now make sure this doesn't crash. */
+	event_get_assignment(ev1, NULL, NULL, NULL, NULL, NULL);
+
+end:
+	if (ev1)
+		event_free(ev1);
+}
+
+struct foreach_helper {
+	int count;
+	const struct event *ev;
+};
+
+static int
+foreach_count_cb(const struct event_base *base, const struct event *ev, void *arg)
+{
+	struct foreach_helper *h = event_get_callback_arg(ev);
+	struct timeval *tv = arg;
+	if (event_get_callback(ev) != timeout_cb)
+		return 0;
+	tt_ptr_op(event_get_base(ev), ==, base);
+	tt_int_op(tv->tv_sec, ==, 10);
+	h->ev = ev;
+	h->count++;
+	return 0;
+end:
+	return -1;
+}
+
+static int
+foreach_find_cb(const struct event_base *base, const struct event *ev, void *arg)
+{
+	const struct event **ev_out = arg;
+	struct foreach_helper *h = event_get_callback_arg(ev);
+	if (event_get_callback(ev) != timeout_cb)
+		return 0;
+	if (h->count == 99) {
+		*ev_out = ev;
+		return 101;
+	}
+	return 0;
+}
+
+static void
+test_event_foreach(void *arg)
+{
+	struct basic_test_data *data = arg;
+	struct event_base *base = data->base;
+	struct event *ev[5];
+	struct foreach_helper visited[5];
+	int i;
+	struct timeval ten_sec = {10,0};
+	const struct event *ev_found = NULL;
+
+	for (i = 0; i < 5; ++i) {
+		visited[i].count = 0;
+		visited[i].ev = NULL;
+		ev[i] = event_new(base, -1, 0, timeout_cb, &visited[i]);
+	}
+
+	tt_int_op(-1, ==, event_base_foreach_event(NULL, foreach_count_cb, NULL));
+	tt_int_op(-1, ==, event_base_foreach_event(base, NULL, NULL));
+
+	event_add(ev[0], &ten_sec);
+	event_add(ev[1], &ten_sec);
+	event_active(ev[1], EV_TIMEOUT, 1);
+	event_active(ev[2], EV_TIMEOUT, 1);
+	event_add(ev[3], &ten_sec);
+	/* Don't touch ev[4]. */
+
+	tt_int_op(0, ==, event_base_foreach_event(base, foreach_count_cb,
+		&ten_sec));
+	tt_int_op(1, ==, visited[0].count);
+	tt_int_op(1, ==, visited[1].count);
+	tt_int_op(1, ==, visited[2].count);
+	tt_int_op(1, ==, visited[3].count);
+	tt_ptr_op(ev[0], ==, visited[0].ev);
+	tt_ptr_op(ev[1], ==, visited[1].ev);
+	tt_ptr_op(ev[2], ==, visited[2].ev);
+	tt_ptr_op(ev[3], ==, visited[3].ev);
+
+	visited[2].count = 99;
+	tt_int_op(101, ==, event_base_foreach_event(base, foreach_find_cb,
+		&ev_found));
+	tt_ptr_op(ev_found, ==, ev[2]);
+
+end:
+	for (i=0; i<5; ++i) {
+		event_free(ev[i]);
+	}
+}
+
+static struct event_base *cached_time_base = NULL;
+static int cached_time_reset = 0;
+static int cached_time_sleep = 0;
+static void
+cache_time_cb(evutil_socket_t fd, short what, void *arg)
+{
+	struct timeval *tv = arg;
+	tt_int_op(0, ==, event_base_gettimeofday_cached(cached_time_base, tv));
+	if (cached_time_sleep) {
+		struct timeval delay = { 0, 30*1000 };
+		evutil_usleep_(&delay);
+	}
+	if (cached_time_reset) {
+		event_base_update_cache_time(cached_time_base);
+	}
+end:
+	;
+}
+
+static void
+test_gettimeofday_cached(void *arg)
+{
+	struct basic_test_data *data = arg;
+	struct event_config *cfg = NULL;
+	struct event_base *base = NULL;
+	struct timeval tv1, tv2, tv3, now;
+	struct event *ev1=NULL, *ev2=NULL, *ev3=NULL;
+	int cached_time_disable = strstr(data->setup_data, "disable") != NULL;
+
+	cfg = event_config_new();
+	if (cached_time_disable) {
+		event_config_set_flag(cfg, EVENT_BASE_FLAG_NO_CACHE_TIME);
+	}
+	cached_time_base = base = event_base_new_with_config(cfg);
+
+	/* Try gettimeofday_cached outside of an event loop. */
+	evutil_gettimeofday(&now, NULL);
+	tt_int_op(0, ==, event_base_gettimeofday_cached(NULL, &tv1));
+	tt_int_op(0, ==, event_base_gettimeofday_cached(base, &tv2));
+	tt_int_op(timeval_msec_diff(&tv1, &tv2), <, 10);
+	tt_int_op(timeval_msec_diff(&tv1, &now), <, 10);
+
+	cached_time_reset = strstr(data->setup_data, "reset") != NULL;
+	cached_time_sleep = strstr(data->setup_data, "sleep") != NULL;
+
+	ev1 = event_new(base, -1, 0, cache_time_cb, &tv1);
+	ev2 = event_new(base, -1, 0, cache_time_cb, &tv2);
+	ev3 = event_new(base, -1, 0, cache_time_cb, &tv3);
+
+	event_active(ev1, EV_TIMEOUT, 1);
+	event_active(ev2, EV_TIMEOUT, 1);
+	event_active(ev3, EV_TIMEOUT, 1);
+
+	event_base_dispatch(base);
+
+	if (cached_time_reset && cached_time_sleep) {
+		tt_int_op(labs(timeval_msec_diff(&tv1,&tv2)), >, 10);
+		tt_int_op(labs(timeval_msec_diff(&tv2,&tv3)), >, 10);
+	} else if (cached_time_disable && cached_time_sleep) {
+		tt_int_op(labs(timeval_msec_diff(&tv1,&tv2)), >, 10);
+		tt_int_op(labs(timeval_msec_diff(&tv2,&tv3)), >, 10);
+	} else if (! cached_time_disable) {
+		tt_assert(evutil_timercmp(&tv1, &tv2, ==));
+		tt_assert(evutil_timercmp(&tv2, &tv3, ==));
+	}
+
+end:
+	if (ev1)
+		event_free(ev1);
+	if (ev2)
+		event_free(ev2);
+	if (ev3)
+		event_free(ev3);
+	if (base)
+		event_base_free(base);
+	if (cfg)
+		event_config_free(cfg);
+}
+
 struct testcase_t main_testcases[] = {
 	/* Some converted-over tests */
 	{ "methods", test_methods, TT_FORK, NULL, NULL },
@@ -2679,6 +2894,14 @@ struct testcase_t main_testcases[] = {
 	{ "many_events_slow_add", test_many_events, TT_ISOLATED, &basic_setup, (void*)1 },
 
 	{ "struct_event_size", test_struct_event_size, 0, NULL, NULL },
+	BASIC(get_assignment, TT_FORK|TT_NEED_BASE|TT_NEED_SOCKETPAIR),
+
+	BASIC(event_foreach, TT_FORK|TT_NEED_BASE),
+	{ "gettimeofday_cached", test_gettimeofday_cached, TT_FORK, &basic_setup, (void*)"" },
+	{ "gettimeofday_cached_sleep", test_gettimeofday_cached, TT_FORK, &basic_setup, (void*)"sleep" },
+	{ "gettimeofday_cached_reset", test_gettimeofday_cached, TT_FORK, &basic_setup, (void*)"sleep reset" },
+	{ "gettimeofday_cached_disabled", test_gettimeofday_cached, TT_FORK, &basic_setup, (void*)"sleep disable" },
+	{ "gettimeofday_cached_disabled_nosleep", test_gettimeofday_cached, TT_FORK, &basic_setup, (void*)"disable" },
 
 #ifndef _WIN32
 	LEGACY(fork, TT_ISOLATED),
