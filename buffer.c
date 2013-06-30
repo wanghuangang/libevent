@@ -114,6 +114,10 @@
 #elif defined(EVENT__HAVE_SENDFILE) && defined(__sun__) && defined(__svr4__)
 #define USE_SENDFILE		1
 #define SENDFILE_IS_SOLARIS	1
+/* splice support (TODO: more error checks, for kernel < 2.6.21 and other flags */
+#elif defined(EVENT__HAVE_SPLICE) && defined(__linux__)
+#define USE_SENDFILE        1
+#define SPLICE_IS_LINUX     1
 #endif
 
 /* Mask of user-selectable callback flags. */
@@ -2416,6 +2420,13 @@ evbuffer_write_sendfile(struct evbuffer *buffer, evutil_socket_t dest_fd,
 #elif defined(SENDFILE_IS_LINUX) || defined(SENDFILE_IS_SOLARIS)
 	ev_ssize_t res;
 	ev_off_t offset = chain->misalign;
+#elif defined(SPLICE_IS_LINUX)
+	ev_ssize_t res;
+	ev_off_t offset = chain->misalign;
+	
+	int pipe[2];
+	if (pipe(pipe) < 0)
+		return (-1);
 #endif
 
 	ASSERT_EVBUFFER_LOCKED(buffer);
@@ -2433,12 +2444,31 @@ evbuffer_write_sendfile(struct evbuffer *buffer, evutil_socket_t dest_fd,
 
 	return (len);
 #elif defined(SENDFILE_IS_LINUX)
-	/* TODO(niels): implement splice */
 	res = sendfile(dest_fd, source_fd, &offset, chain->off);
 	if (res == -1 && EVUTIL_ERR_RW_RETRIABLE(errno)) {
 		/* if this is EAGAIN or EINTR return 0; otherwise, -1 */
 		return (0);
 	}
+	return (res);
+#elif defined(SPLICE_IS_LINUX)
+	/* TODO: or use goto's instead? */
+	for (;;) {
+		res = splice(source_fd, NULL, pipe[1], &offset, chain->off, SPLICE_F_MOVE);
+		if (res == -1)
+			break;
+
+		res = splice(pipe[0], NULL, dest_fd, NULL, &offset, chain->off, SPLICE_F_MOVE);
+		break;
+	}
+
+	close(pipe[0]);
+	close(pipe[1]);
+
+	if (res == -1 && EVUTIL_ERR_RW_RETRIABLE(errno)) {
+		/* if this is EAGAIN or EINTR return 0; otherwise, -1 */
+		return (0);
+	}
+
 	return (res);
 #elif defined(SENDFILE_IS_SOLARIS)
 	{
