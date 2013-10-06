@@ -1166,6 +1166,9 @@ evhttp_connection_free(struct evhttp_connection *evcon)
 	if (evcon->address != NULL)
 		mm_free(evcon->address);
 
+	mm_free(evcon->conn_address);
+	evcon->conn_address = NULL;
+
 	mm_free(evcon);
 }
 
@@ -1248,9 +1251,6 @@ evhttp_connection_reset_(struct evhttp_connection *evcon)
 	evbuffer_drain(tmp, evbuffer_get_length(tmp));
 
 	evcon->state = EVCON_DISCONNECTED;
-
-	mm_free(evcon->conn_address);
-	evcon->conn_address = NULL;
 }
 
 static void
