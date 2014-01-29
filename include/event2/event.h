@@ -936,6 +936,13 @@ int event_base_got_break(struct event_base *);
 #define evtimer_initialized(ev)		event_initialized(ev)
 /**@}*/
 
+
+/**
+ * Set last signal flags.
+ */
+void event_signal_flags(struct event *, unsigned);
+#define evsignal_flags(ev, sa_flags) event_signal_flags((ev), (sa_flags))
+
 /**
    @name evsignal_* macros
 

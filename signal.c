@@ -252,7 +252,7 @@ evsig_set_handler_(struct event_base *base,
 #ifdef EVENT__HAVE_SIGACTION
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = handler;
-	sa.sa_flags |= SA_RESTART;
+	sa.sa_flags |= sig->sa_flags;
 	sigfillset(&sa.sa_mask);
 
 	if (sigaction(evsignal, &sa, sig->sh_old[evsignal]) == -1) {

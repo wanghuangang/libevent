@@ -55,6 +55,11 @@ struct evsig_info {
 #endif
 	/* Size of sh_old. */
 	int sh_old_max;
+
+	/* Last flags for sigaction() only.
+	 * Default is: SA_RESTART
+	 */
+	int sa_flags;
 };
 int evsig_init_(struct event_base *);
 void evsig_dealloc_(struct event_base *);

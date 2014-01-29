@@ -584,6 +584,8 @@ event_base_new_with_config(const struct event_config *cfg)
 
 	base->sig.ev_signal_pair[0] = -1;
 	base->sig.ev_signal_pair[1] = -1;
+	base->sig.sa_flags = SA_RESTART;
+
 	base->th_notify_fd[0] = -1;
 	base->th_notify_fd[1] = -1;
 
@@ -2062,6 +2064,17 @@ event_base_get_running_event(struct event_base *base)
 	}
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 	return ev;
+}
+
+void event_signal_flags(struct event *ev, unsigned sa_flags)
+{
+	/**
+	 * TODO:
+	 * We can't add this field to struct event,
+	 * to don't break binary compatibility
+	 * (becuase it is public)
+	 */
+	ev->ev_base->sig.sa_flags = sa_flags;
 }
 
 struct event *
