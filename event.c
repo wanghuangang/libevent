@@ -584,8 +584,6 @@ event_base_new_with_config(const struct event_config *cfg)
 
 	base->sig.ev_signal_pair[0] = -1;
 	base->sig.ev_signal_pair[1] = -1;
-	base->sig.sa_flags = SA_RESTART;
-
 	base->th_notify_fd[0] = -1;
 	base->th_notify_fd[1] = -1;
 
@@ -2066,17 +2064,6 @@ event_base_get_running_event(struct event_base *base)
 	return ev;
 }
 
-void event_signal_flags(struct event *ev, unsigned sa_flags)
-{
-	/**
-	 * TODO:
-	 * We can't add this field to struct event,
-	 * to don't break binary compatibility
-	 * (becuase it is public)
-	 */
-	ev->ev_base->sig.sa_flags = sa_flags;
-}
-
 struct event *
 event_new(struct event_base *base, evutil_socket_t fd, short events, void (*cb)(evutil_socket_t, short, void *), void *arg)
 {
@@ -2084,6 +2071,8 @@ event_new(struct event_base *base, evutil_socket_t fd, short events, void (*cb)(
 	ev = mm_malloc(sizeof(struct event));
 	if (ev == NULL)
 		return (NULL);
+
+	ev->ev_sa_flags = SA_RESTART;
 	if (event_assign(ev, base, fd, events, cb, arg) < 0) {
 		mm_free(ev);
 		return (NULL);
@@ -2370,6 +2359,14 @@ event_add(struct event *ev, const struct timeval *tv)
 	EVBASE_RELEASE_LOCK(ev->ev_base, th_base_lock);
 
 	return (res);
+}
+
+int
+evsignal_add_with_flags(struct event *ev, const struct timeval *tv, int flags)
+{
+	ev->ev_sa_flags = flags;
+
+	return evsignal_add(ev, tv);
 }
 
 /* Helper callback: wake an event_base from another thread.  This version

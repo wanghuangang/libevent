@@ -938,10 +938,10 @@ int event_base_got_break(struct event_base *);
 
 
 /**
- * Set last signal flags.
+ * Change default sa_flags for sigaction(2) from SA_RESTART
+ * to user-specific.
  */
-void event_signal_flags(struct event *, unsigned);
-#define evsignal_flags(ev, sa_flags) event_signal_flags((ev), (sa_flags))
+int evsignal_add_with_flags(struct event *, const struct timeval *, int);
 
 /**
    @name evsignal_* macros

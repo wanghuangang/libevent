@@ -145,6 +145,8 @@ struct event {
 			short ev_ncalls;
 			/* Allows deletes in callback */
 			short *ev_pncalls;
+			/* Passed to sigaction(). */
+			int sa_flags;
 		} ev_signal;
 	} ev_;
 
@@ -163,7 +165,7 @@ TAILQ_HEAD (event_list, event);
 #undef TAILQ_HEAD
 #endif
 
-LIST_HEAD (event_dlist, event); 
+LIST_HEAD (event_dlist, event);
 
 #ifdef EVENT_DEFINED_LISTENTRY_
 #undef LIST_ENTRY
