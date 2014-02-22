@@ -171,8 +171,16 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 
 	while (1) {
 		n = read(sfd, &info, sizeof(struct signalfd_siginfo));
-		if (n != sizeof(struct signalfd_siginfo))
-			event_sock_err(1, fd, "%s: read from sfd", __func__);
+		if (n != sizeof(struct signalfd_siginfo)) {
+			int err = evutil_socket_geterror(fd);
+			if (!EVUTIL_ERR_IS_EAGAIN(err))
+				event_sock_err(1, fd, "%s: read from sfd", __func__);
+			else {
+				event_sock_warn(-1, "%s: no more signals at signalfd(%i)",
+					__func__, sfd);
+			}
+			break;
+		}
 
 		event_sock_warn(-1, "%s: got %s (%i) via signalfd(%i)",
 			__func__, strsignal(info.ssi_signo), info.ssi_signo, sfd);
@@ -308,7 +316,7 @@ evsig_set_handler_(struct event_base *base,
 	}
 
 	/* TODO: Add multiple events for one multiple signals */
-	sfd = signalfd(-1, &mask, 0);
+	sfd = signalfd(-1, &mask, SFD_NONBLOCK);
 	if (sfd == -1) {
 		event_warn("signalfd");
 		mm_free(sig->sh_old[evsignal]);
