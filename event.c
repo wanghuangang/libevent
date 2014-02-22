@@ -582,8 +582,12 @@ event_base_new_with_config(const struct event_config *cfg)
 
 	min_heap_ctor_(&base->timeheap);
 
+#ifdef EVENT__HAVE_SIGNALFD
+	base->sig.ev_signal_fd = -1;
+#else
 	base->sig.ev_signal_pair[0] = -1;
 	base->sig.ev_signal_pair[1] = -1;
+#endif
 	base->th_notify_fd[0] = -1;
 	base->th_notify_fd[1] = -1;
 
@@ -924,10 +928,15 @@ event_reinit(struct event_base *base)
 		event_del_nolock_(&base->sig.ev_signal, EVENT_DEL_AUTOBLOCK);
 		event_debug_unassign(&base->sig.ev_signal);
 		memset(&base->sig.ev_signal, 0, sizeof(base->sig.ev_signal));
+#ifdef EVENT__HAVE_SIGNALFD
+		if (base->sig.ev_signal_fd != -1)
+			EVUTIL_CLOSESOCKET(base->sig.ev_signal_fd);
+#else
 		if (base->sig.ev_signal_pair[0] != -1)
 			EVUTIL_CLOSESOCKET(base->sig.ev_signal_pair[0]);
 		if (base->sig.ev_signal_pair[1] != -1)
 			EVUTIL_CLOSESOCKET(base->sig.ev_signal_pair[1]);
+#endif
 		had_signal_added = 1;
 		base->sig.ev_signal_added = 0;
 	}

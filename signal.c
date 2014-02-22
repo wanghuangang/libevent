@@ -54,6 +54,9 @@
 #ifdef EVENT__HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
+#ifdef EVENT__HAVE_SIGNALFD
+#include <sys/signalfd.h>
+#endif
 
 #include "event2/event.h"
 #include "event2/event_struct.h"
@@ -69,7 +72,8 @@
 
   This is the signal-handling implementation we use for backends that don't
   have a better way to do signal handling.  It uses sigaction() or signal()
-  to set a signal handler, and a socket pair to tell the event base when
+  or signalfd() to set a signal handler, and a socket pair to tell the event
+  base when.
 
   Note that I said "the event base" : only one event base can be set up to use
   this at a time.  For historical reasons and backward compatibility, if you
@@ -78,8 +82,7 @@
   signal, but event_base A won't.
 
   It would be neat to change this behavior in some future version of Libevent.
-  kqueue already does something far more sensible.  We can make all backends
-  on Linux do a reasonable thing using signalfd.
+  kqueue already does something far more sensible.
 */
 
 #ifndef _WIN32
@@ -90,6 +93,7 @@
 
 static int evsig_add(struct event_base *, evutil_socket_t, short, short, void *);
 static int evsig_del(struct event_base *, evutil_socket_t, short, short, void *);
+static void evsig_cb(evutil_socket_t fd, short what, void *arg);
 
 static const struct eventop evsigops = {
 	"signal",
@@ -116,13 +120,30 @@ static void __cdecl evsig_handler(int sig);
 #define EVSIGBASE_LOCK() EVLOCK_LOCK(evsig_base_lock, 0)
 #define EVSIGBASE_UNLOCK() EVLOCK_UNLOCK(evsig_base_lock, 0)
 
+static void
+evsig_init_event_(struct event_base *base, int fd)
+{
+	EVUTIL_ASSERT(fd >= 0);
+
+	event_assign(&base->sig.ev_signal, base, fd,
+		EV_READ | EV_PERSIST, evsig_cb, base);
+
+	base->sig.ev_signal.ev_flags |= EVLIST_INTERNAL;
+	event_priority_set(&base->sig.ev_signal, 0);
+}
+
 void
 evsig_set_base_(struct event_base *base)
 {
 	EVSIGBASE_LOCK();
 	evsig_base = base;
 	evsig_base_n_signals_added = base->sig.ev_n_signals_added;
+#ifdef EVENT__HAVE_SIGNALFD
+	evsig_base_fd = base->sig.ev_signal_fd;
+	evsig_init_event_(base, evsig_base_fd);
+#else
 	evsig_base_fd = base->sig.ev_signal_pair[1];
+#endif
 	EVSIGBASE_UNLOCK();
 }
 
@@ -130,9 +151,14 @@ evsig_set_base_(struct event_base *base)
 static void
 evsig_cb(evutil_socket_t fd, short what, void *arg)
 {
+#ifdef EVENT__HAVE_SIGNALFD
+	struct signalfd_siginfo info;
+	int sfd;
+#else
 	static char signals[1024];
-	ev_ssize_t n;
+#endif
 	int i;
+	ev_ssize_t n;
 	int ncaught[NSIG];
 	struct event_base *base;
 
@@ -140,6 +166,20 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 
 	memset(&ncaught, 0, sizeof(ncaught));
 
+#ifdef EVENT__HAVE_SIGNALFD
+	sfd = base->sig.ev_signal_fd;
+
+	while (1) {
+		n = read(sfd, &info, sizeof(struct signalfd_siginfo));
+		if (n != sizeof(struct signalfd_siginfo))
+			event_sock_err(1, fd, "%s: read from sfd", __func__);
+
+		event_sock_warn(-1, "%s: got %s (%i) via signalfd(%i)",
+			__func__, strsignal(info.ssi_signo), info.ssi_signo, sfd);
+
+		ncaught[info.ssi_signo]++;
+	}
+#else /* EVENT__HAVE_SIGNALFD */
 	while (1) {
 #ifdef _WIN32
 		n = recv(fd, signals, sizeof(signals), 0);
@@ -161,6 +201,7 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 				ncaught[sig]++;
 		}
 	}
+#endif /* EVENT__HAVE_SIGNALFD */
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
 	for (i = 0; i < NSIG; ++i) {
@@ -177,7 +218,11 @@ evsig_init_(struct event_base *base)
 	 * Our signal handler is going to write to one end of the socket
 	 * pair to wake up our event loop.  The event loop then scans for
 	 * signals that got delivered.
+	 *
+	 * XXX: It will be good if we will fallback to sigaction()/signal()
+	 * when signalfd() failed?
 	 */
+#ifndef EVENT__HAVE_SIGNALFD
 	if (evutil_make_internal_pipe_(base->sig.ev_signal_pair) == -1) {
 #ifdef _WIN32
 		/* Make this nonfatal on win32, where sometimes people
@@ -188,6 +233,7 @@ evsig_init_(struct event_base *base)
 #endif
 		return -1;
 	}
+#endif /* EVENT__HAVE_SIGNALFD */
 
 	if (base->sig.sh_old) {
 		mm_free(base->sig.sh_old);
@@ -195,11 +241,9 @@ evsig_init_(struct event_base *base)
 	base->sig.sh_old = NULL;
 	base->sig.sh_old_max = 0;
 
-	event_assign(&base->sig.ev_signal, base, base->sig.ev_signal_pair[0],
-		EV_READ | EV_PERSIST, evsig_cb, base);
-
-	base->sig.ev_signal.ev_flags |= EVLIST_INTERNAL;
-	event_priority_set(&base->sig.ev_signal, 0);
+#ifndef EVENT__HAVE_SIGNALFD
+	evsig_init_event_(base, base->sig.ev_signal_pair[0]);
+#endif
 
 	base->evsigsel = &evsigops;
 
@@ -213,7 +257,10 @@ evsig_set_handler_(struct event_base *base,
     int evsignal, void (__cdecl *handler)(int),
     int sa_flags)
 {
-#ifdef EVENT__HAVE_SIGACTION
+#if defined(EVENT__HAVE_SIGNALFD)
+	sigset_t mask;
+	int sfd;
+#elif defined(EVENT__HAVE_SIGACTION)
 	struct sigaction sa;
 #else
 	ev_sighandler_t sh;
@@ -250,7 +297,28 @@ evsig_set_handler_(struct event_base *base,
 	}
 
 	/* save previous handler and setup new handler */
-#ifdef EVENT__HAVE_SIGACTION
+#if defined(EVENT__HAVE_SIGNALFD)
+	sigfillset(&mask);
+	if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+		event_warn("sigprocmask for signalfd");
+		/* XXX: avoid copy-pasting this */
+		mm_free(sig->sh_old[evsignal]);
+		sig->sh_old[evsignal] = NULL;
+		return (-1);
+	}
+
+	/* TODO: Add multiple events for one multiple signals */
+	sfd = signalfd(-1, &mask, 0);
+	if (sfd == -1) {
+		event_warn("signalfd");
+		mm_free(sig->sh_old[evsignal]);
+		sig->sh_old[evsignal] = NULL;
+		return (-1);
+	}
+
+	base->sig.ev_signal_fd = sfd;
+	evsig_base_fd = sfd;
+#elif defined(EVENT__HAVE_SIGACTION)
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = handler;
 	sa.sa_flags |= sa_flags;
@@ -294,9 +362,15 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 		    "not rely on this behavior in future Libevent versions.",
 		    base, evsig_base, base->evsel->name);
 	}
+
+	/**
+	 * XXX: partial copy of evsig_set_base_()
+	 */
 	evsig_base = base;
 	evsig_base_n_signals_added = ++sig->ev_n_signals_added;
+#ifndef EVENT__HAVE_SIGNALFD
 	evsig_base_fd = base->sig.ev_signal_pair[1];
+#endif
 	EVSIGBASE_UNLOCK();
 
 	event_debug(("%s: %d: changing signal handler", __func__, (int)evsignal));
@@ -304,6 +378,9 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 		goto err;
 	}
 
+#ifdef EVENT__HAVE_SIGNALFD
+	evsig_init_event_(base, base->sig.ev_signal_fd);
+#endif
 
 	if (!sig->ev_signal_added) {
 		if (event_add_nolock_(&sig->ev_signal, NULL, 0))
@@ -381,7 +458,10 @@ evsig_handler(int sig)
 #ifdef _WIN32
 	int socket_errno = EVUTIL_SOCKET_ERROR();
 #endif
+	/* TODO: cleanup */
+#ifndef EVENT__HAVE_SIGNALFD
 	ev_uint8_t msg;
+#endif
 
 	if (evsig_base == NULL) {
 		event_warnx(
@@ -390,6 +470,7 @@ evsig_handler(int sig)
 		return;
 	}
 
+#ifndef EVENT__HAVE_SIGNALFD
 #ifndef EVENT__HAVE_SIGACTION
 	signal(sig, evsig_handler);
 #endif
@@ -404,6 +485,8 @@ evsig_handler(int sig)
 		(void)r; /* Suppress 'unused return value' and 'unused var' */
 	}
 #endif
+#endif /* EVENT__HAVE_SIGNALFD */
+
 	errno = save_errno;
 #ifdef _WIN32
 	EVUTIL_SET_SOCKET_ERROR(socket_errno);
@@ -434,6 +517,7 @@ evsig_dealloc_(struct event_base *base)
 	}
 	EVSIGBASE_UNLOCK();
 
+#ifndef EVENT__HAVE_SIGNALFD
 	if (base->sig.ev_signal_pair[0] != -1) {
 		evutil_closesocket(base->sig.ev_signal_pair[0]);
 		base->sig.ev_signal_pair[0] = -1;
@@ -442,6 +526,7 @@ evsig_dealloc_(struct event_base *base)
 		evutil_closesocket(base->sig.ev_signal_pair[1]);
 		base->sig.ev_signal_pair[1] = -1;
 	}
+#endif
 	base->sig.sh_old_max = 0;
 
 	/* per index frees are handled in evsig_del() */

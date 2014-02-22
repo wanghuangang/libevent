@@ -37,10 +37,14 @@ typedef void (*ev_sighandler_t)(int);
 /* Data structure for the default signal-handling implementation in signal.c
  */
 struct evsig_info {
-	/* Event watching ev_signal_pair[1] */
+	/* Event watching ev_signal_pair[1], or ev_signal_fd */
 	struct event ev_signal;
+#ifdef EVENT__HAVE_SIGNALFD
+	evutil_socket_t ev_signal_fd;
+#else
 	/* Socketpair used to send notifications from the signal handler */
 	evutil_socket_t ev_signal_pair[2];
+#endif
 	/* True iff we've added the ev_signal event yet. */
 	int ev_signal_added;
 	/* Count of the number of signals we're currently watching. */
