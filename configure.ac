@@ -604,6 +604,18 @@ fi
 
 AM_CONDITIONAL(SIGNAL_SUPPORT, [test "x$needsignal" = "xyes"])
 
+AC_MSG_CHECKING(for signalfd)
+AC_EGREP_CPP(yes,
+[
+#include <sys/syscall.h>
+#if defined(__NR_signalfd) || defined(__NR_signalfd4)
+yes
+#endif
+],	[ AC_DEFINE(HAVE_SIGNALFD, 1,
+	      [Define if signalfd() exist])
+	  AC_MSG_RESULT(yes) ], AC_MSG_RESULT(no))
+
+
 AC_TYPE_PID_T
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T
