@@ -956,13 +956,11 @@ test_simplestsignal(void)
 	memset(&itv, 0, sizeof(itv));
 	itv.it_value.tv_sec = 0;
 	itv.it_value.tv_usec = 100000;
-	if (setitimer(ITIMER_REAL, &itv, NULL) == -1)
-		goto skip_simplesignal;
-
-	event_dispatch();
- skip_simplesignal:
-	if (evsignal_del(&ev) == -1)
-		test_ok = 0;
+	if (setitimer(ITIMER_REAL, &itv, NULL) == -1) {
+		if (evsignal_del(&ev) == -1)
+			test_ok = 0;
+	} else
+		event_dispatch();
 
 	cleanup_test();
 }
