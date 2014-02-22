@@ -463,7 +463,8 @@ kq_sig_add(struct event_base *base, int nsignal, short old, short events, void *
          * zombie processes for us, and we don't get any notification.
          * This appears to be the only signal with this quirk. */
 	if (evsig_set_handler_(base, nsignal,
-                               nsignal == SIGCHLD ? SIG_DFL : SIG_IGN) == -1)
+                               nsignal == SIGCHLD ? SIG_DFL : SIG_IGN,
+			       SA_RESTART) == -1)
 		return (-1);
 
 	return (0);

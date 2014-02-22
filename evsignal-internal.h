@@ -37,24 +37,33 @@ typedef void (*ev_sighandler_t)(int);
 /* Data structure for the default signal-handling implementation in signal.c
  */
 struct evsig_info {
-	/* Event watching ev_signal_pair[1] */
+	/* Event watching ev_signal_pair[1], or ev_signal_fd */
 	struct event ev_signal;
+#ifdef EVENT__HAVE_SIGNALFD
+	evutil_socket_t ev_signal_fd;
+#else
 	/* Socketpair used to send notifications from the signal handler */
 	evutil_socket_t ev_signal_pair[2];
+#endif
 	/* True iff we've added the ev_signal event yet. */
 	int ev_signal_added;
 	/* Count of the number of signals we're currently watching. */
 	int ev_n_signals_added;
 
 	/* Array of previous signal handler objects before Libevent started
-	 * messing with them.  Used to restore old signal handlers. */
-#ifdef EVENT__HAVE_SIGACTION
+	 * messing with them.  Used to restore old signal handlers.
+	 *
+	 * As for signalfd() this will be _global_ counters how much events
+	 * added for current signal. */
+#if defined(EVENT__HAVE_SIGACTION)
 	struct sigaction **sh_old;
 #else
 	ev_sighandler_t **sh_old;
 #endif
+#if !defined(EVENT__HAVE_SIGNALFD)
 	/* Size of sh_old. */
 	int sh_old_max;
+#endif
 };
 int evsig_init_(struct event_base *);
 void evsig_dealloc_(struct event_base *);
