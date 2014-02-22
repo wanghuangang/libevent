@@ -1030,6 +1030,7 @@ test_signal_dealloc(void)
 	cleanup_test();
 }
 
+#ifndef EVENT__HAVE_SIGNALFD
 static void
 test_signal_pipeloss(void)
 {
@@ -1051,6 +1052,7 @@ test_signal_pipeloss(void)
 	}
 	cleanup_test();
 }
+#endif
 
 /*
  * make two bases to catch signals, use both of them.  this only works
@@ -3298,7 +3300,9 @@ struct testcase_t signal_testcases[] = {
 	LEGACY(multiplesignal, TT_ISOLATED),
 	LEGACY(immediatesignal, TT_ISOLATED),
 	LEGACY(signal_dealloc, TT_ISOLATED),
+#ifndef EVENT__HAVE_SIGNALFD
 	LEGACY(signal_pipeloss, TT_ISOLATED),
+#endif
 	LEGACY(signal_switchbase, TT_ISOLATED|TT_NO_LOGS),
 	LEGACY(signal_restore, TT_ISOLATED),
 	LEGACY(signal_assert, TT_ISOLATED),
