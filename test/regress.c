@@ -944,6 +944,30 @@ signal_cb(evutil_socket_t fd, short event, void *arg)
 }
 
 static void
+test_simplestsignal(void)
+{
+	struct event ev;
+	struct itimerval itv;
+
+	setup_test("Simplest one signal: ");
+	evsignal_set(&ev, SIGALRM, signal_cb, &ev);
+	evsignal_add(&ev, NULL);
+
+	memset(&itv, 0, sizeof(itv));
+	itv.it_value.tv_sec = 0;
+	itv.it_value.tv_usec = 100000;
+	if (setitimer(ITIMER_REAL, &itv, NULL) == -1)
+		goto skip_simplesignal;
+
+	event_dispatch();
+ skip_simplesignal:
+	if (evsignal_del(&ev) == -1)
+		test_ok = 0;
+
+	cleanup_test();
+}
+
+static void
 test_simplesignal(void)
 {
 	struct event ev;
@@ -3296,6 +3320,7 @@ struct testcase_t evtag_testcases[] = {
 
 struct testcase_t signal_testcases[] = {
 #ifndef _WIN32
+	LEGACY(simplestsignal, TT_ISOLATED),
 	LEGACY(simplesignal, TT_ISOLATED),
 	LEGACY(multiplesignal, TT_ISOLATED),
 	LEGACY(immediatesignal, TT_ISOLATED),
