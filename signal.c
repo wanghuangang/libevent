@@ -115,6 +115,20 @@ static struct event_base *evsig_base = NULL;
 static int evsig_base_n_signals_added = 0;
 static evutil_socket_t evsig_base_fd = -1;
 
+/**
+ * XXX: Fix this hacky solution
+ */
+#ifdef EVENT__HAVE_SIGNALFD
+static int **sh_old;
+static int sh_old_max;
+
+#define sig_prev_info sh_old
+#define sig_prev_info_max sh_old_max
+#else
+#define sig_prev_info base->sig.sh_old
+#define sig_prev_info_max base->sig.sh_old_max
+#endif
+
 static void __cdecl evsig_handler(int sig);
 
 #define EVSIGBASE_LOCK() EVLOCK_LOCK(evsig_base_lock, 0)
@@ -255,11 +269,11 @@ evsig_init_(struct event_base *base)
 	fd = base->sig.ev_signal_pair[0];
 #endif /* EVENT__HAVE_SIGNALFD */
 
-	if (base->sig.sh_old) {
-		mm_free(base->sig.sh_old);
+	if (sig_prev_info) {
+		mm_free(sig_prev_info);
 	}
-	base->sig.sh_old = NULL;
-	base->sig.sh_old_max = 0;
+	sig_prev_info = NULL;
+	sig_prev_info_max = 0;
 
 	evsig_init_event_(base, fd);
 
@@ -290,26 +304,26 @@ evsig_set_handler_(struct event_base *base,
 	 * resize saved signal handler array up to the highest signal number.
 	 * a dynamic array is used to keep footprint on the low side.
 	 */
-	if (evsignal >= sig->sh_old_max) {
+	if (evsignal >= sig_prev_info_max) {
 		int new_max = evsignal + 1;
 		event_debug(("%s: evsignal (%d) >= sh_old_max (%d), resizing",
-			    __func__, evsignal, sig->sh_old_max));
-		p = mm_realloc(sig->sh_old, new_max * sizeof(*sig->sh_old));
+			    __func__, evsignal, sig_prev_info_max));
+		p = mm_realloc(sig_prev_info, new_max * sizeof(*sig_prev_info));
 		if (p == NULL) {
 			event_warn("realloc");
 			return (-1);
 		}
 
-		memset((char *)p + sig->sh_old_max * sizeof(*sig->sh_old),
-		    0, (new_max - sig->sh_old_max) * sizeof(*sig->sh_old));
+		memset((char *)p + sig_prev_info_max * sizeof(*sig_prev_info),
+		    0, (new_max - sig_prev_info_max) * sizeof(*sig_prev_info));
 
-		sig->sh_old_max = new_max;
-		sig->sh_old = p;
+		sig_prev_info_max = new_max;
+		sig_prev_info = p;
 	}
 
 	/* allocate space for previous handler out of dynamic array */
-	sig->sh_old[evsignal] = mm_malloc(sizeof *sig->sh_old[evsignal]);
-	if (sig->sh_old[evsignal] == NULL) {
+	sig_prev_info[evsignal] = mm_malloc(sizeof *sig_prev_info[evsignal]);
+	if (sig_prev_info[evsignal] == NULL) {
 		event_warn("malloc");
 		return (-1);
 	}
@@ -324,7 +338,7 @@ evsig_set_handler_(struct event_base *base,
 		return (-1);
 	}
 
-	s_added = sig->sh_old[evsignal];
+	s_added = sig_prev_info[evsignal];
 	++(*s_added);
 #elif defined(EVENT__HAVE_SIGACTION)
 	memset(&sa, 0, sizeof(sa));
@@ -418,14 +432,14 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 	ev_sighandler_t *sh;
 #endif
 
-	if (evsignal >= sig->sh_old_max) {
+	if (evsignal >= sig_prev_info_max) {
 		/* Can't actually restore. */
 		/* XXXX.*/
 		return 0;
 	}
 
 	/* restore previous handler */
-	sh = sig->sh_old[evsignal];
+	sh = sig_prev_info[evsignal];
 
 #if defined(EVENT__HAVE_SIGNALFD)
 	EVUTIL_ASSERT(*sh > 0);
@@ -441,7 +455,7 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 			ret = -1;
 		}
 
-		sig->sh_old[evsignal] = NULL;
+		sig_prev_info[evsignal] = NULL;
 		mm_free(sh);
 	}
 #elif defined(EVENT__HAVE_SIGACTION)
@@ -537,9 +551,9 @@ evsig_dealloc_(struct event_base *base)
 	event_debug_unassign(&base->sig.ev_signal);
 
 	for (i = 0; i < NSIG; ++i) {
-		if (i < base->sig.sh_old_max && base->sig.sh_old[i] != NULL)
+		if (i < sig_prev_info_max && sig_prev_info[i] != NULL)
 			/* for signalfd() we need loop, since this field is a counter */
-			while (base->sig.sh_old[i] != NULL)
+			while (sig_prev_info[i] != NULL)
 				evsig_restore_handler_(base, i);
 	}
 	EVSIGBASE_LOCK();
@@ -565,12 +579,12 @@ evsig_dealloc_(struct event_base *base)
 		base->sig.ev_signal_pair[1] = -1;
 	}
 #endif
-	base->sig.sh_old_max = 0;
+	sig_prev_info_max = 0;
 
 	/* per index frees are handled in evsig_del() */
-	if (base->sig.sh_old) {
-		mm_free(base->sig.sh_old);
-		base->sig.sh_old = NULL;
+	if (sig_prev_info) {
+		mm_free(sig_prev_info);
+		sig_prev_info = NULL;
 	}
 }
 

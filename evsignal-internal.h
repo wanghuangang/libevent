@@ -53,17 +53,17 @@ struct evsig_info {
 	/* Array of previous signal handler objects before Libevent started
 	 * messing with them.  Used to restore old signal handlers.
 	 *
-	 * As for signalfd() this will be just counters how much events
+	 * As for signalfd() this will be _global_ counters how much events
 	 * added for current signal. */
-#if defined(EVENT__HAVE_SIGNALFD)
-	int **sh_old;
-#elif defined(EVENT__HAVE_SIGACTION)
+#if defined(EVENT__HAVE_SIGACTION)
 	struct sigaction **sh_old;
 #else
 	ev_sighandler_t **sh_old;
 #endif
+#if !defined(EVENT__HAVE_SIGNALFD)
 	/* Size of sh_old. */
 	int sh_old_max;
+#endif
 };
 int evsig_init_(struct event_base *);
 void evsig_dealloc_(struct event_base *);
