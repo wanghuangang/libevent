@@ -382,8 +382,6 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 		goto err;
 	}
 
-	evsig_init_event_(base, evsig_base_fd);
-
 	if (!sig->ev_signal_added) {
 		if (event_add_nolock_(&sig->ev_signal, NULL, 0))
 			goto err;
@@ -495,7 +493,6 @@ evsig_handler(int sig)
 		(void)r; /* Suppress 'unused return value' and 'unused var' */
 	}
 #endif
-
 	errno = save_errno;
 #ifdef _WIN32
 	EVUTIL_SET_SOCKET_ERROR(socket_errno);
