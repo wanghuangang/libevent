@@ -229,12 +229,7 @@ evsig_init_(struct event_base *base)
 	 */
 #ifdef EVENT__HAVE_SIGNALFD
 	sigset_t mask;
-
 	sigfillset(&mask);
-	if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
-		event_warn("sigprocmask for signalfd");
-		return (-1);
-	}
 
 	/* TODO: Add multiple events for one multiple signals */
 	fd = signalfd(-1, &mask, SFD_NONBLOCK);
@@ -281,6 +276,7 @@ evsig_set_handler_(struct event_base *base,
     int sa_flags)
 {
 #if defined(EVENT__HAVE_SIGNALFD)
+	sigset_t mask;
 #elif defined(EVENT__HAVE_SIGACTION)
 	struct sigaction sa;
 #else
@@ -319,6 +315,13 @@ evsig_set_handler_(struct event_base *base,
 
 	/* save previous handler and setup new handler */
 #if defined(EVENT__HAVE_SIGNALFD)
+	sigemptyset(&mask);
+	sigaddset(&mask, evsignal);
+
+	if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+		event_warn("sigprocmask for signalfd");
+		return (-1);
+	}
 #elif defined(EVENT__HAVE_SIGACTION)
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = handler;
