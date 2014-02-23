@@ -419,7 +419,9 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 	sh = sig->sh_old[evsignal];
 	sig->sh_old[evsignal] = NULL;
 #if defined(EVENT__HAVE_SIGNALFD)
-	/** XXX: do we right thing here? */
+	sigemptyset(&sh->sa_mask);
+	sigaddset(&sh->sa_mask, evsignal);
+
 	if (sigprocmask(SIG_UNBLOCK, &sh->sa_mask, NULL) == -1) {
 		event_warn("sigprocmask");
 		ret = -1;
