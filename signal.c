@@ -277,6 +277,7 @@ evsig_set_handler_(struct event_base *base,
 {
 #if defined(EVENT__HAVE_SIGNALFD)
 	sigset_t mask;
+	int *s_added;
 #elif defined(EVENT__HAVE_SIGACTION)
 	struct sigaction sa;
 #else
@@ -322,6 +323,9 @@ evsig_set_handler_(struct event_base *base,
 		event_warn("sigprocmask for signalfd");
 		return (-1);
 	}
+
+	s_added = sig->sh_old[evsignal];
+	++(*s_added);
 #elif defined(EVENT__HAVE_SIGACTION)
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = handler;
@@ -405,7 +409,10 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 {
 	int ret = 0;
 	struct evsig_info *sig = &base->sig;
-#if defined(EVENT__HAVE_SIGNALFD) || defined(EVENT__HAVE_SIGACTION)
+#if defined(EVENT__HAVE_SIGNALFD)
+	int *sh;
+	sigset_t mask;
+#elif defined(EVENT__HAVE_SIGACTION)
 	struct sigaction *sh;
 #else
 	ev_sighandler_t *sh;
@@ -419,28 +426,41 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 
 	/* restore previous handler */
 	sh = sig->sh_old[evsignal];
-	sig->sh_old[evsignal] = NULL;
-#if defined(EVENT__HAVE_SIGNALFD)
-	sigemptyset(&sh->sa_mask);
-	sigaddset(&sh->sa_mask, evsignal);
 
-	if (sigprocmask(SIG_UNBLOCK, &sh->sa_mask, NULL) == -1) {
-		event_warn("sigprocmask");
-		ret = -1;
+#if defined(EVENT__HAVE_SIGNALFD)
+	EVUTIL_ASSERT(*sh > 0);
+	--(*sh);
+
+	/* No more events for this signal, can unblock it now. */
+	if (!*sh) {
+		sigemptyset(&mask);
+		sigaddset(&mask, evsignal);
+
+		if (sigprocmask(SIG_UNBLOCK, &mask, NULL) == -1) {
+			event_warn("sigprocmask");
+			ret = -1;
+		}
+
+		sig->sh_old[evsignal] = NULL;
+		mm_free(sh);
 	}
 #elif defined(EVENT__HAVE_SIGACTION)
 	if (sigaction(evsignal, sh, NULL) == -1) {
 		event_warn("sigaction");
 		ret = -1;
 	}
+
+	sig->sh_old[evsignal] = NULL;
+	mm_free(sh);
 #else
 	if (signal(evsignal, *sh) == SIG_ERR) {
 		event_warn("signal");
 		ret = -1;
 	}
-#endif
 
+	sig->sh_old[evsignal] = NULL;
 	mm_free(sh);
+#endif
 
 	return ret;
 }
@@ -518,7 +538,9 @@ evsig_dealloc_(struct event_base *base)
 
 	for (i = 0; i < NSIG; ++i) {
 		if (i < base->sig.sh_old_max && base->sig.sh_old[i] != NULL)
-			evsig_restore_handler_(base, i);
+			/* for signalfd() we need loop, since this field is a counter */
+			while (base->sig.sh_old[i] != NULL)
+				evsig_restore_handler_(base, i);
 	}
 	EVSIGBASE_LOCK();
 	if (base == evsig_base) {
