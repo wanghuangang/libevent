@@ -172,14 +172,13 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 			if (!EVUTIL_ERR_IS_EAGAIN(err))
 				event_sock_err(1, fd, "%s: read from sfd", __func__);
 			else {
-				event_sock_warn(fd, "%s: no more signals at signalfd",
-					__func__);
+				event_debug(("no more signals at signalfd(%i)", fd));
 			}
 			break;
 		}
 
-		event_sock_warn(fd, "%s: got %s (%i) via signalfd",
-			__func__, strsignal(info.ssi_signo), info.ssi_signo);
+		event_debug(("got %s (%i) via signalfd(%i)",
+			strsignal(info.ssi_signo), info.ssi_signo, fd));
 
 		ncaught[info.ssi_signo]++;
 	}
