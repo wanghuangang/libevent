@@ -408,7 +408,7 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 {
 	int ret = 0;
 	struct evsig_info *sig = &base->sig;
-#ifdef EVENT__HAVE_SIGACTION
+#if defined(EVENT__HAVE_SIGNALFD) || defined(EVENT__HAVE_SIGACTION)
 	struct sigaction *sh;
 #else
 	ev_sighandler_t *sh;
@@ -423,7 +423,13 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 	/* restore previous handler */
 	sh = sig->sh_old[evsignal];
 	sig->sh_old[evsignal] = NULL;
-#ifdef EVENT__HAVE_SIGACTION
+#if defined(EVENT__HAVE_SIGNALFD)
+	/** XXX: do we right thing here? */
+	if (sigprocmask(SIG_UNBLOCK, &sh->sa_mask, NULL) == -1) {
+		event_warn("sigprocmask");
+		ret = -1;
+	}
+#elif defined(EVENT__HAVE_SIGACTION)
 	if (sigaction(evsignal, sh, NULL) == -1) {
 		event_warn("sigaction");
 		ret = -1;
