@@ -322,7 +322,8 @@ evsig_set_handler_(struct event_base *base,
 	}
 
 	/* allocate space for previous handler out of dynamic array */
-	sig_prev_info[evsignal] = mm_malloc(sizeof *sig_prev_info[evsignal]);
+	if (sig_prev_info[evsignal] == NULL)
+		sig_prev_info[evsignal] = mm_calloc(1, sizeof *sig_prev_info[evsignal]);
 	if (sig_prev_info[evsignal] == NULL) {
 		event_warn("malloc");
 		return (-1);
