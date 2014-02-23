@@ -459,6 +459,12 @@ evsig_del(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 	return (evsig_restore_handler_(base, (int)evsignal));
 }
 
+#ifdef EVENT__HAVE_SIGNALFD
+static void __cdecl
+evsig_handler(int sig)
+{
+}
+#else
 static void __cdecl
 evsig_handler(int sig)
 {
@@ -466,10 +472,7 @@ evsig_handler(int sig)
 #ifdef _WIN32
 	int socket_errno = EVUTIL_SOCKET_ERROR();
 #endif
-	/* TODO: cleanup */
-#ifndef EVENT__HAVE_SIGNALFD
 	ev_uint8_t msg;
-#endif
 
 	if (evsig_base == NULL) {
 		event_warnx(
@@ -478,7 +481,6 @@ evsig_handler(int sig)
 		return;
 	}
 
-#ifndef EVENT__HAVE_SIGNALFD
 #ifndef EVENT__HAVE_SIGACTION
 	signal(sig, evsig_handler);
 #endif
@@ -493,13 +495,13 @@ evsig_handler(int sig)
 		(void)r; /* Suppress 'unused return value' and 'unused var' */
 	}
 #endif
-#endif /* EVENT__HAVE_SIGNALFD */
 
 	errno = save_errno;
 #ifdef _WIN32
 	EVUTIL_SET_SOCKET_ERROR(socket_errno);
 #endif
 }
+#endif /* EVENT__HAVE_SIGNALFD */
 
 void
 evsig_dealloc_(struct event_base *base)
