@@ -153,7 +153,6 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 {
 #ifdef EVENT__HAVE_SIGNALFD
 	struct signalfd_siginfo info;
-	int sfd;
 #else
 	static char signals[1024];
 #endif
@@ -167,23 +166,21 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 	memset(&ncaught, 0, sizeof(ncaught));
 
 #ifdef EVENT__HAVE_SIGNALFD
-	sfd = base->sig.ev_signal_fd;
-
 	while (1) {
-		n = read(sfd, &info, sizeof(struct signalfd_siginfo));
+		n = read(fd, &info, sizeof(struct signalfd_siginfo));
 		if (n != sizeof(struct signalfd_siginfo)) {
 			int err = evutil_socket_geterror(fd);
 			if (!EVUTIL_ERR_IS_EAGAIN(err))
 				event_sock_err(1, fd, "%s: read from sfd", __func__);
 			else {
-				event_sock_warn(-1, "%s: no more signals at signalfd(%i)",
-					__func__, sfd);
+				event_sock_warn(fd, "%s: no more signals at signalfd",
+					__func__);
 			}
 			break;
 		}
 
-		event_sock_warn(-1, "%s: got %s (%i) via signalfd(%i)",
-			__func__, strsignal(info.ssi_signo), info.ssi_signo, sfd);
+		event_sock_warn(fd, "%s: got %s (%i) via signalfd",
+			__func__, strsignal(info.ssi_signo), info.ssi_signo);
 
 		ncaught[info.ssi_signo]++;
 	}
