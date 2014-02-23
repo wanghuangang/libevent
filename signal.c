@@ -522,7 +522,12 @@ evsig_dealloc_(struct event_base *base)
 	}
 	EVSIGBASE_UNLOCK();
 
-#ifndef EVENT__HAVE_SIGNALFD
+#ifdef EVENT__HAVE_SIGNALFD
+	if (base->sig.ev_signal_fd != -1) {
+		evutil_closesocket(base->sig.ev_signal_fd);
+		base->sig.ev_signal_fd = -1;
+	}
+#else
 	if (base->sig.ev_signal_pair[0] != -1) {
 		evutil_closesocket(base->sig.ev_signal_pair[0]);
 		base->sig.ev_signal_pair[0] = -1;
