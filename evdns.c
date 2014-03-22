@@ -4556,7 +4556,12 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 			goto out;
 		/** XXX: array_size */
 		for (i = 0; i < sizeof(families) / families[0]; ++i) {
+			/** We don't have such address */
 			if (!(e->families & 1 << families[i])) {
+				continue;
+			}
+			/* User don't want such address */
+			if (f && f != families[i]) {
 				continue;
 			}
 
