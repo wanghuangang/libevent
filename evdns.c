@@ -317,13 +317,20 @@ struct hosts_entry {
 		struct sockaddr_in6 sin6;
 	} addr;
 	int addrlen;
+	/** bitmask for: AF_INET or AF_INET6 */
+	int families;
 	char hostname[1];
 };
 
 static int
+hosts_entry_key(const struct hosts_entry *a)
+{
+	return ht_casestring_hash_(a->hostname);
+}
+static int
 hosts_entry_cmp(const struct hosts_entry *a, const struct hosts_entry *b)
 {
-	return ht_casestring_hash_(a->hostname) - ht_casestring_hash_(b->hostname);
+	return hosts_entry_key(a) - hosts_entry_key(b);
 }
 /** XXX: deal with missing prototype and declaration */
 RB_HEAD(hosts_tree, hosts_entry);
@@ -4092,7 +4099,7 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 		return -1;
 
 	while ((hostname = NEXT_TOKEN)) {
-		struct hosts_entry *he;
+		struct hosts_entry *he, *existed;
 		size_t namelen;
 		if ((hash = strchr(hostname, '#'))) {
 			if (hash == hostname)
@@ -4109,8 +4116,14 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 		memcpy(&he->addr, &ss, socklen);
 		memcpy(he->hostname, hostname, namelen+1);
 		he->addrlen = socklen;
+		he->families = 1 << ss.ss_family;
 
-		RB_INSERT(hosts_tree, &base->hostsdb, he);
+		if ((existed = RB_FIND(hosts_tree, &base->hostsdb, he))) {
+			existed->families |= he->families;
+			mm_free(he);
+		} else {
+			RB_INSERT(hosts_tree, &base->hostsdb, he);
+		}
 
 		if (hash)
 			return 0;
@@ -4513,6 +4526,7 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
     const char *nodename, struct evutil_addrinfo *hints, ev_uint16_t port,
     struct evutil_addrinfo **res)
 {
+	static int families[] = { AF_INET, AF_INET6 };
 	int n_found = 0;
 	struct hosts_entry *e, *tmp;
 	struct evutil_addrinfo *ai=NULL;
@@ -4527,17 +4541,27 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 
 	if (e) {
 		struct evutil_addrinfo *ai_new;
+		size_t i;
+
 		++n_found;
-		if ((e->addr.sa.sa_family == AF_INET && f == PF_INET6) ||
-		    (e->addr.sa.sa_family == AF_INET6 && f == PF_INET))
+		if ((f == PF_INET6 && !(e->families & 1 << AF_INET)) ||
+		    (f == PF_INET && !(e->families & 1 << AF_INET6)))
 			goto out;
-		ai_new = evutil_new_addrinfo_(&e->addr.sa, e->addrlen, hints);
-		if (!ai_new) {
-			n_found = 0;
-			goto out;
+		/** XXX: array_size */
+		for (i = 0; i < sizeof(families) / families[0]; ++i) {
+			if (!(e->families & 1 << families[i])) {
+				continue;
+			}
+
+			e->addr.sa.sa_family = families[i];
+			ai_new = evutil_new_addrinfo_(&e->addr.sa, e->addrlen, hints);
+			if (!ai_new) {
+				n_found = 0;
+				goto out;
+			}
+			sockaddr_setport(ai_new->ai_addr, port);
+			ai = evutil_addrinfo_append_(ai, ai_new);
 		}
-		sockaddr_setport(ai_new->ai_addr, port);
-		ai = evutil_addrinfo_append_(ai, ai_new);
 	}
 
 	EVDNS_UNLOCK(base);
