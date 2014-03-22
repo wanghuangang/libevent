@@ -311,11 +311,8 @@ struct server_request {
 
 struct hosts_entry {
 	RB_ENTRY(hosts_entry) entry;
-	union {
-		struct sockaddr sa;
-		struct sockaddr_in sin;
-		struct sockaddr_in6 sin6;
-	} addr;
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
 	int addrlen;
 	/** bitmask for: AF_INET or AF_INET6 */
 	int families;
@@ -4112,14 +4109,24 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 		he = mm_calloc(1, sizeof(struct hosts_entry)+namelen);
 		if (!he)
 			return -1;
-		EVUTIL_ASSERT(socklen <= (int)sizeof(he->addr));
-		memcpy(&he->addr, &ss, socklen);
+		EVUTIL_ASSERT(socklen <= (int)sizeof(he->sin6));
+		if (ss.ss_family == AF_INET) {
+			memcpy(&he->sin, &ss, socklen);
+		} else {
+			memcpy(&he->sin6, &ss, socklen);
+		}
 		memcpy(he->hostname, hostname, namelen+1);
 		he->addrlen = socklen;
 		he->families = 1 << ss.ss_family;
 
 		if ((existed = RB_FIND(hosts_tree, &base->hostsdb, he))) {
 			existed->families |= he->families;
+			if (ss.ss_family == AF_INET) {
+				memcpy(&existed->sin, &ss, socklen);
+			} else {
+				memcpy(&existed->sin6, &ss, socklen);
+			}
+
 			mm_free(he);
 		} else {
 			RB_INSERT(hosts_tree, &base->hostsdb, he);
@@ -4553,8 +4560,11 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 				continue;
 			}
 
-			e->addr.sa.sa_family = families[i];
-			ai_new = evutil_new_addrinfo_(&e->addr.sa, e->addrlen, hints);
+			if (families[i] == AF_INET) {
+				ai_new = evutil_new_addrinfo_((struct sockaddr *)&e->sin, sizeof(e->sin), hints);
+			} else {
+				ai_new = evutil_new_addrinfo_((struct sockaddr *)&e->sin6, sizeof(e->sin6), hints);
+			}
 			if (!ai_new) {
 				n_found = 0;
 				goto out;
