@@ -8,6 +8,8 @@
 #ifndef HT_INTERNAL_H_INCLUDED_
 #define HT_INTERNAL_H_INCLUDED_
 
+#include "util-internal.h"
+
 #define HT_HEAD(name, type)                                             \
   struct name {                                                         \
     /* The hash table itself. */                                        \
@@ -95,6 +97,20 @@ ht_string_hash_(const char *s)
   h = *cp << 7;
   while (*cp) {
     h = (1000003*h) ^ *cp++;
+  }
+  /* This conversion truncates the length of the string, but that's ok. */
+  h ^= (unsigned)(cp-(const unsigned char*)s);
+  return h;
+}
+
+static inline unsigned
+ht_casestring_hash_(const char *s)
+{
+  unsigned h;
+  const unsigned char *cp = (const unsigned char *)s;
+  h = EVUTIL_TOLOWER_(*cp) << 7;
+  while (*cp) {
+    h = (1000003*h) ^ EVUTIL_TOLOWER_(*cp++);
   }
   /* This conversion truncates the length of the string, but that's ok. */
   h ^= (unsigned)(cp-(const unsigned char*)s);

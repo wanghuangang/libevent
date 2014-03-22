@@ -49,7 +49,11 @@
  */
 
 #include "event2/event-config.h"
+#include "ht-internal.h"
 #include "evconfig-private.h"
+/** XXX: deal with libbsd */
+#define RB_AUGMENT(x) (void)(x)
+#include "WIN32-Code/tree.h"
 
 #include <sys/types.h>
 
@@ -305,6 +309,26 @@ struct server_request {
 	struct evdns_server_request base;
 };
 
+struct hosts_entry {
+	RB_ENTRY(hosts_entry) entry;
+	union {
+		struct sockaddr sa;
+		struct sockaddr_in sin;
+		struct sockaddr_in6 sin6;
+	} addr;
+	int addrlen;
+	char hostname[1];
+};
+
+static int
+hosts_entry_cmp(const struct hosts_entry *a, const struct hosts_entry *b)
+{
+	return ht_casestring_hash_(a->hostname) - ht_casestring_hash_(b->hostname);
+}
+/** XXX: deal with missing prototype and declaration */
+RB_HEAD(hosts_tree, hosts_entry);
+RB_GENERATE(hosts_tree, hosts_entry, entry, hosts_entry_cmp)
+
 struct evdns_base {
 	/* An array of n_req_heads circular lists for inflight requests.
 	 * Each inflight request req is in req_heads[req->trans_id % n_req_heads].
@@ -357,24 +381,13 @@ struct evdns_base {
 
 	struct search_state *global_search_state;
 
-	TAILQ_HEAD(hosts_list, hosts_entry) hostsdb;
+	struct hosts_tree hostsdb;
 
 #ifndef EVENT__DISABLE_THREAD_SUPPORT
 	void *lock;
 #endif
 
 	int disable_when_inactive;
-};
-
-struct hosts_entry {
-	TAILQ_ENTRY(hosts_entry) next;
-	union {
-		struct sockaddr sa;
-		struct sockaddr_in sin;
-		struct sockaddr_in6 sin6;
-	} addr;
-	int addrlen;
-	char hostname[1];
 };
 
 static struct evdns_base *current_base = NULL;
@@ -3901,8 +3914,6 @@ evdns_base_new(struct event_base *event_base, int flags)
 	base->global_nameserver_probe_initial_timeout.tv_sec = 10;
 	base->global_nameserver_probe_initial_timeout.tv_usec = 0;
 
-	TAILQ_INIT(&base->hostsdb);
-
 #define EVDNS_BASE_ALL_FLAGS (0x8001)
 	if (flags & ~EVDNS_BASE_ALL_FLAGS) {
 		flags = EVDNS_BASE_INITIALIZE_NAMESERVERS;
@@ -4023,8 +4034,8 @@ evdns_base_free_and_unlock(struct evdns_base *base, int fail_requests)
 
 	{
 		struct hosts_entry *victim;
-		while ((victim = TAILQ_FIRST(&base->hostsdb))) {
-			TAILQ_REMOVE(&base->hostsdb, victim, next);
+		RB_FOREACH(victim, hosts_tree, &base->hostsdb) {
+			RB_REMOVE(hosts_tree, &base->hostsdb, victim);
 			mm_free(victim);
 		}
 	}
@@ -4099,7 +4110,7 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 		memcpy(he->hostname, hostname, namelen+1);
 		he->addrlen = socklen;
 
-		TAILQ_INSERT_TAIL(&base->hostsdb, he, next);
+		RB_INSERT(hosts_tree, &base->hostsdb, he);
 
 		if (hash)
 			return 0;
@@ -4497,42 +4508,29 @@ evdns_getaddrinfo_gotresolve(int result, char type, int count,
 	}
 }
 
-static struct hosts_entry *
-find_hosts_entry(struct evdns_base *base, const char *hostname,
-    struct hosts_entry *find_after)
-{
-	struct hosts_entry *e;
-
-	if (find_after)
-		e = TAILQ_NEXT(find_after, next);
-	else
-		e = TAILQ_FIRST(&base->hostsdb);
-
-	for (; e; e = TAILQ_NEXT(e, next)) {
-		if (!evutil_ascii_strcasecmp(e->hostname, hostname))
-			return e;
-	}
-	return NULL;
-}
-
 static int
 evdns_getaddrinfo_fromhosts(struct evdns_base *base,
     const char *nodename, struct evutil_addrinfo *hints, ev_uint16_t port,
     struct evutil_addrinfo **res)
 {
 	int n_found = 0;
-	struct hosts_entry *e;
+	struct hosts_entry *e, *tmp;
 	struct evutil_addrinfo *ai=NULL;
 	int f = hints->ai_family;
 
 	EVDNS_LOCK(base);
-	for (e = find_hosts_entry(base, nodename, NULL); e;
-	    e = find_hosts_entry(base, nodename, e)) {
+	/** XXX: handle records with non-unique key (hostname) */
+	tmp = malloc(sizeof(struct hosts_entry) + strlen(nodename) + 1);
+	strcpy(tmp->hostname, nodename);
+
+	e = RB_FIND(hosts_tree, &base->hostsdb, tmp);
+
+	if (e) {
 		struct evutil_addrinfo *ai_new;
 		++n_found;
 		if ((e->addr.sa.sa_family == AF_INET && f == PF_INET6) ||
 		    (e->addr.sa.sa_family == AF_INET6 && f == PF_INET))
-			continue;
+			goto out;
 		ai_new = evutil_new_addrinfo_(&e->addr.sa, e->addrlen, hints);
 		if (!ai_new) {
 			n_found = 0;
@@ -4541,6 +4539,7 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 		sockaddr_setport(ai_new->ai_addr, port);
 		ai = evutil_addrinfo_append_(ai, ai_new);
 	}
+
 	EVDNS_UNLOCK(base);
 out:
 	if (n_found) {
