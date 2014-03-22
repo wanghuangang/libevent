@@ -311,6 +311,8 @@ struct server_request {
 
 struct hosts_entry {
 	RB_ENTRY(hosts_entry) entry;
+	int hash;
+
 	struct sockaddr_in sin;
 	struct sockaddr_in6 sin6;
 	int addrlen;
@@ -327,7 +329,7 @@ hosts_entry_key(const struct hosts_entry *a)
 static int
 hosts_entry_cmp(const struct hosts_entry *a, const struct hosts_entry *b)
 {
-	return hosts_entry_key(a) - hosts_entry_key(b);
+	return a->hash - b->hash;
 }
 /** XXX: deal with missing prototype and declaration */
 RB_HEAD(hosts_tree, hosts_entry);
@@ -4118,6 +4120,7 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 		memcpy(he->hostname, hostname, namelen+1);
 		he->addrlen = socklen;
 		he->families = 1 << ss.ss_family;
+		he->hash = hosts_entry_key(he);
 
 		if ((existed = RB_FIND(hosts_tree, &base->hostsdb, he))) {
 			existed->families |= he->families;
@@ -4535,16 +4538,15 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 {
 	static int families[] = { AF_INET, AF_INET6 };
 	int n_found = 0;
-	struct hosts_entry *e, *tmp;
+	struct hosts_entry *e, tmp;
 	struct evutil_addrinfo *ai=NULL;
 	int f = hints->ai_family;
 
 	EVDNS_LOCK(base);
 	/** XXX: handle records with non-unique key (hostname) */
-	tmp = malloc(sizeof(struct hosts_entry) + strlen(nodename) + 1);
-	strcpy(tmp->hostname, nodename);
+	tmp.hash = ht_casestring_hash_(nodename);
 
-	e = RB_FIND(hosts_tree, &base->hostsdb, tmp);
+	e = RB_FIND(hosts_tree, &base->hostsdb, &tmp);
 
 	if (e) {
 		struct evutil_addrinfo *ai_new;
