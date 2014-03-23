@@ -4553,9 +4553,6 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 		size_t i;
 
 		++n_found;
-		if ((f == PF_INET6 && !(e->families & 1 << AF_INET)) ||
-		    (f == PF_INET && !(e->families & 1 << AF_INET6)))
-			goto out;
 		/** XXX: array_size */
 		for (i = 0; i < sizeof(families) / families[0]; ++i) {
 			/** We don't have such address */
