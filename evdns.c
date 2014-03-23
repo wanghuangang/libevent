@@ -4569,7 +4569,7 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 				ai_new = evutil_new_addrinfo_((struct sockaddr *)&e->sin6, sizeof(e->sin6), hints);
 			}
 			if (!ai_new) {
-				goto out;
+				break;
 			}
 			sockaddr_setport(ai_new->ai_addr, port);
 			ai = evutil_addrinfo_append_(ai, ai_new);
@@ -4578,7 +4578,6 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 	}
 
 	EVDNS_UNLOCK(base);
-out:
 	if (n_found) {
 		/* Note that we return an empty answer if we found entries for
 		 * this hostname but none were of the right address type. */
