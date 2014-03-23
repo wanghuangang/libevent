@@ -4039,8 +4039,12 @@ evdns_base_free_and_unlock(struct evdns_base *base, int fail_requests)
 	}
 
 	{
-		struct hosts_entry *victim;
-		RB_FOREACH(victim, hosts_tree, &base->hostsdb) {
+		struct hosts_entry *victim, *next = NULL;
+
+		for (victim = RB_MIN(hosts_tree, &base->hostsdb);
+			victim != NULL;
+			victim = next) {
+			next = RB_NEXT(hosts_tree, &base->hostsdb, victim);
 			RB_REMOVE(hosts_tree, &base->hostsdb, victim);
 			mm_free(victim);
 		}
