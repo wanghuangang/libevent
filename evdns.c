@@ -4126,7 +4126,7 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 		he->families = 1 << ss.ss_family;
 		he->hash = hosts_entry_key(he);
 
-		if ((existed = RB_FIND(hosts_tree, &base->hostsdb, he))) {
+		if ((existed = RB_INSERT(hosts_tree, &base->hostsdb, he))) {
 			existed->families |= he->families;
 			if (ss.ss_family == AF_INET) {
 				memcpy(&existed->sin, &ss, socklen);
@@ -4135,8 +4135,6 @@ evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 			}
 
 			mm_free(he);
-		} else {
-			RB_INSERT(hosts_tree, &base->hostsdb, he);
 		}
 
 		if (hash)
