@@ -4552,7 +4552,6 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 		struct evutil_addrinfo *ai_new;
 		size_t i;
 
-		++n_found;
 		/** XXX: array_size */
 		for (i = 0; i < sizeof(families) / families[0]; ++i) {
 			/** We don't have such address */
@@ -4570,11 +4569,11 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
 				ai_new = evutil_new_addrinfo_((struct sockaddr *)&e->sin6, sizeof(e->sin6), hints);
 			}
 			if (!ai_new) {
-				n_found = 0;
 				goto out;
 			}
 			sockaddr_setport(ai_new->ai_addr, port);
 			ai = evutil_addrinfo_append_(ai, ai_new);
+			++n_found;
 		}
 	}
 
