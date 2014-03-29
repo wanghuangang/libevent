@@ -4072,10 +4072,13 @@ evdns_base_free(struct evdns_base *base, int fail_requests)
 void
 evdns_base_clear_host_addresses(struct evdns_base *base)
 {
-	struct hosts_entry *victim;
+	struct hosts_entry *victim, *next = NULL;
 	EVDNS_LOCK(base);
-	while ((victim = TAILQ_FIRST(&base->hostsdb))) {
-		TAILQ_REMOVE(&base->hostsdb, victim, next);
+	for (victim = RB_MIN(hosts_tree, &base->hostsdb);
+		victim != NULL;
+		victim = next) {
+		next = RB_NEXT(hosts_tree, &base->hostsdb, victim);
+		RB_REMOVE(hosts_tree, &base->hostsdb, victim);
 		mm_free(victim);
 	}
 	EVDNS_UNLOCK(base);
