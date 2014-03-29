@@ -888,7 +888,7 @@ test_evbuffer_file_segment_add_cleanup_cb(void* ptr)
 	char *tmpfilename = NULL;
 	int fd = -1;
 	struct evbuffer *evb = NULL;
-	struct evbuffer_file_segment *seg = NULL;
+	struct evbuffer_file_segment *seg = NULL, *segptr;
 	char const* arg = "token";
 
 	fd = regress_make_tmpfile("file_segment_test_file", 22, &tmpfilename);
@@ -897,7 +897,7 @@ test_evbuffer_file_segment_add_cleanup_cb(void* ptr)
 	evb = evbuffer_new();
 	tt_assert(evb);
 
-	seg = evbuffer_file_segment_new(fd, 0, -1, 0);
+	segptr = seg = evbuffer_file_segment_new(fd, 0, -1, 0);
 	tt_assert(seg);
 
 	evbuffer_file_segment_add_cleanup_cb(
@@ -906,29 +906,27 @@ test_evbuffer_file_segment_add_cleanup_cb(void* ptr)
 	tt_assert(fd != -1);
 
 	tt_assert(evbuffer_add_file_segment(evb, seg, 0, -1)!=-1);
-	
+
 	evbuffer_validate(evb);
 
 	tt_int_op(file_segment_cleanup_cb_called_count, ==, 0);
 	evbuffer_file_segment_free(seg);
+	seg = NULL; /* Prevent double-free. */
 
 	tt_int_op(file_segment_cleanup_cb_called_count, ==, 0);
 	evbuffer_free(evb);
-	
+	evb = NULL; /* pevent double-free */
+
 	tt_int_op(file_segment_cleanup_cb_called_count, ==, 1);
-	tt_assert(file_segment_cleanup_cb_called_with == seg);
+	tt_assert(file_segment_cleanup_cb_called_with == segptr);
 	tt_assert(file_segment_cleanup_cb_called_with_flags == 0);
 	tt_assert(file_segment_cleanup_cb_called_with_arg == (void*)arg);
-	
-	seg = NULL;
-	evb = NULL;
 
 end:
-	
-	if(evb) 
-	  evbuffer_free(evb);
-	if(seg)
-	  evbuffer_file_segment_free(seg);
+	if (evb)
+		evbuffer_free(evb);
+	if (seg)
+		evbuffer_file_segment_free(seg);
 	if (tmpfilename) {
 		unlink(tmpfilename);
 		free(tmpfilename);
@@ -1662,7 +1660,7 @@ test_evbuffer_add_reference(void *ptr)
 	evbuffer_add(buf1, "You shake and shake the ", 24);
 	evbuffer_add_reference(buf1, "ketchup bottle", 14, ref_done_cb,
 	    (void*)3333);
-	evbuffer_add(buf1, ". Nothing comes and then a lot'll.", 42);
+	evbuffer_add(buf1, ". Nothing comes and then a lot'll.", 35);
 	evbuffer_free(buf1);
 	buf1 = NULL;
 	tt_int_op(ref_done_cb_called_count, ==, 3);
@@ -1810,6 +1808,7 @@ test_evbuffer_prepend(void *ptr)
 	evbuffer_prepend(buf1, "It is no longer true to say ", 28);
 	evbuffer_validate(buf1);
 	n = evbuffer_remove(buf1, tmp, sizeof(tmp)-1);
+	tt_int_op(n, >=, 0);
 	tmp[n]='\0';
 	tt_str_op(tmp,==,"It is no longer true to say it has 29 characters");
 
@@ -1828,6 +1827,7 @@ test_evbuffer_prepend(void *ptr)
 	evbuffer_validate(buf2);
 	evbuffer_validate(buf1);
 	n = evbuffer_remove(buf2, tmp, sizeof(tmp)-1);
+	tt_int_op(n, >=, 0);
 	tmp[n]='\0';
 	tt_str_op(tmp,==,"Here is string 1000. Here is string 999. ");
 

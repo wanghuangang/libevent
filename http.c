@@ -2150,6 +2150,14 @@ evhttp_read_header(struct evhttp_connection *evcon,
 	/* Disable reading for now */
 	bufferevent_disable(evcon->bufev, EV_READ);
 
+	/* Callback can shut down connection with negative return value */
+	if (req->header_cb != NULL) {
+		if ((*req->header_cb)(req, req->cb_arg) < 0) {
+			evhttp_connection_fail_(evcon, EVREQ_HTTP_EOF);
+			return;
+		}
+	}
+
 	/* Done reading headers, do the real work */
 	switch (req->kind) {
 	case EVHTTP_REQUEST:
@@ -2544,6 +2552,10 @@ evhttp_send_done(struct evhttp_connection *evcon, void *arg)
 	struct evhttp_request *req = TAILQ_FIRST(&evcon->requests);
 	TAILQ_REMOVE(&evcon->requests, req, next);
 
+	if (req->on_complete_cb != NULL) {
+		req->on_complete_cb(req, req->on_complete_cb_arg);
+	}
+
 	need_close =
 	    (REQ_VERSION_BEFORE(req, 1, 1) &&
 		!evhttp_is_connection_keepalive(req->input_headers))||
@@ -2658,7 +2670,8 @@ evhttp_send_reply_start(struct evhttp_request *req, int code,
 }
 
 void
-evhttp_send_reply_chunk(struct evhttp_request *req, struct evbuffer *databuf)
+evhttp_send_reply_chunk_with_cb(struct evhttp_request *req, struct evbuffer *databuf,
+    void (*cb)(struct evhttp_connection *, void *), void *arg)
 {
 	struct evhttp_connection *evcon = req->evcon;
 	struct evbuffer *output;
@@ -2680,9 +2693,14 @@ evhttp_send_reply_chunk(struct evhttp_request *req, struct evbuffer *databuf)
 	if (req->chunked) {
 		evbuffer_add(output, "\r\n", 2);
 	}
-	evhttp_write_buffer(evcon, NULL, NULL);
+	evhttp_write_buffer(evcon, cb, arg);
 }
 
+void
+evhttp_send_reply_chunk(struct evhttp_request *req, struct evbuffer *databuf)
+{
+	evhttp_send_reply_chunk_with_cb(req, databuf, NULL, NULL);
+}
 void
 evhttp_send_reply_end(struct evhttp_request *req)
 {
@@ -3813,10 +3831,25 @@ evhttp_request_set_chunked_cb(struct evhttp_request *req,
 }
 
 void
+evhttp_request_set_header_cb(struct evhttp_request *req,
+    int (*cb)(struct evhttp_request *, void *))
+{
+	req->header_cb = cb;
+}
+
+void
 evhttp_request_set_error_cb(struct evhttp_request *req,
     void (*cb)(enum evhttp_request_error, void *))
 {
 	req->error_cb = cb;
+}
+
+void
+evhttp_request_set_on_complete_cb(struct evhttp_request *req,
+    void (*cb)(struct evhttp_request *, void *), void *cb_arg)
+{
+	req->on_complete_cb = cb;
+	req->on_complete_cb_arg = cb_arg;
 }
 
 /*
@@ -4255,6 +4288,8 @@ parse_port(const char *s, const char *eos)
 			return -1;
 		portnum = (portnum * 10) + (*s - '0');
 		if (portnum < 0)
+			return -1;
+		if (portnum > 65535)
 			return -1;
 		++s;
 	}
