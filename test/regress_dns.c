@@ -873,7 +873,6 @@ dns_disable_when_inactive_test(void *arg)
 {
 	disable_when_inactive = 1;
 	dns_inflight_test_impl(arg, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
-	disable_when_inactive = 0;
 }
 
 /* === Test for bufferevent_socket_connect_hostname */
