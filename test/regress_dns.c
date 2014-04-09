@@ -443,6 +443,7 @@ end:
 
 static int n_replies_left;
 static struct event_base *exit_base;
+static int disable_when_inactive;
 
 struct generic_dns_callback_result {
 	int result;
@@ -483,7 +484,8 @@ generic_dns_callback(int result, char type, int count, int ttl, void *addresses,
 		res->addrs = res->addrs_buf;
 	}
 
-	if (--n_replies_left == 0)
+	--n_replies_left;
+	if (!disable_when_inactive && n_replies_left == 0)
 		event_base_loopexit(exit_base, NULL);
 }
 
@@ -819,7 +821,7 @@ dumb_bytes_fn(char *p, size_t n)
 #endif
 
 static void
-dns_inflight_test(void *arg)
+dns_inflight_test_impl(void *arg, int flags)
 {
 	struct basic_test_data *data = arg;
 	struct event_base *base = data->base;
@@ -833,7 +835,7 @@ dns_inflight_test(void *arg)
 	tt_assert(regress_dnsserver(base, &portnum, reissue_table));
 	evutil_snprintf(buf, sizeof(buf), "127.0.0.1:%d", (int)portnum);
 
-	dns = evdns_base_new(base, 0);
+	dns = evdns_base_new(base, flags);
 	tt_assert(!evdns_base_nameserver_ip_add(dns, buf));
 	tt_assert(! evdns_base_set_option(dns, "max-inflight:", "3"));
 	tt_assert(! evdns_base_set_option(dns, "randomize-case:", "0"));
@@ -856,6 +858,20 @@ end:
 	if (dns)
 		evdns_base_free(dns, 0);
 	regress_clean_dnsserver();
+}
+
+static void
+dns_inflight_test(void *arg)
+{
+	dns_inflight_test_impl(arg, 0);
+}
+
+static void
+dns_disable_when_inactive_test(void *arg)
+{
+	disable_when_inactive = 1;
+	dns_inflight_test_impl(arg, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+	disable_when_inactive = 0;
 }
 
 /* === Test for bufferevent_socket_connect_hostname */
@@ -1897,6 +1913,8 @@ struct testcase_t dns_testcases[] = {
 	{ "reissue", dns_reissue_test, TT_FORK|TT_NEED_BASE|TT_NO_LOGS, &basic_setup, NULL },
 	{ "inflight", dns_inflight_test, TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 	{ "bufferevent_connect_hostname", test_bufferevent_connect_hostname,
+	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
+	{ "disable_when_inactive", dns_disable_when_inactive_test,
 	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 
 	{ "getaddrinfo_async", test_getaddrinfo_async,
