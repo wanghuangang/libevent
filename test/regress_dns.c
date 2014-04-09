@@ -846,6 +846,8 @@ dns_inflight_test_impl(void *arg, int flags)
 	n_replies_left = 20;
 	exit_base = base;
 
+	if (flags & EVDNS_BASE_DISABLE_WHEN_INACTIVE)
+		alarm(10);
 	event_base_dispatch(base);
 
 	for (i=0;i<20;++i) {
