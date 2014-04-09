@@ -896,6 +896,7 @@ dns_disable_when_inactive_no_ns_test(void *arg)
 	struct evdns_base *dns = NULL;
 	ev_uint16_t portnum = 0;
 	char buf[64];
+	struct generic_dns_callback_result r;
 
 	inactive_base = event_base_new();
 	tt_assert(inactive_base);
@@ -909,14 +910,18 @@ dns_disable_when_inactive_no_ns_test(void *arg)
 	tt_assert(! evdns_base_set_option(dns, "timeout:", "1"));
 	tt_assert(! evdns_base_set_option(dns, "initial-probe-timeout:", "1"));
 
-	evdns_base_resolve_ipv4(dns, "foof.example.com", 0, generic_dns_callback, NULL);
+	evdns_base_resolve_ipv4(dns, "foof.example.com", 0, generic_dns_callback, &r);
 	n_replies_left = 1;
 	exit_base = base;
 
 	alarm(10);
 	event_base_dispatch(base);
 
-	tt_int_op(n_replies_left, ==, 1);
+	tt_int_op(n_replies_left, ==, 0);
+
+	tt_int_op(r.result, ==, DNS_ERR_TIMEOUT);
+	tt_int_op(r.count, ==, 0);
+	tt_int_op(r.addrs, ==, NULL);
 
 end:
 	if (inactive_base)
