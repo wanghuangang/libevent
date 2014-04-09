@@ -443,7 +443,7 @@ end:
 
 static int n_replies_left;
 static struct event_base *exit_base;
-static int disable_when_inactive;
+static struct evdns_server_port *exit_port;
 
 struct generic_dns_callback_result {
 	int result;
@@ -485,8 +485,13 @@ generic_dns_callback(int result, char type, int count, int ttl, void *addresses,
 	}
 
 	--n_replies_left;
-	if (!disable_when_inactive && n_replies_left == 0)
-		event_base_loopexit(exit_base, NULL);
+	if (n_replies_left == 0) {
+		if (exit_port) {
+			evdns_close_server_port(exit_port);
+			exit_port = NULL;
+		} else
+			event_base_loopexit(exit_base, NULL);
+	}
 }
 
 static struct regress_dns_server_table search_table[] = {
@@ -826,13 +831,21 @@ dns_inflight_test_impl(void *arg, int flags)
 	struct basic_test_data *data = arg;
 	struct event_base *base = data->base;
 	struct evdns_base *dns = NULL;
+	struct evdns_server_port *dns_port = NULL;
 	ev_uint16_t portnum = 0;
 	char buf[64];
+	int disable_when_inactive = flags & EVDNS_BASE_DISABLE_WHEN_INACTIVE;
 
 	struct generic_dns_callback_result r[20];
 	int i;
 
-	tt_assert(regress_dnsserver(base, &portnum, reissue_table));
+	dns_port = regress_get_dnsserver(base, &portnum, NULL,
+		regress_dns_server_cb, reissue_table);
+	tt_assert(dns_port);
+	if (disable_when_inactive) {
+		exit_port = dns_port;
+	}
+
 	evutil_snprintf(buf, sizeof(buf), "127.0.0.1:%d", (int)portnum);
 
 	dns = evdns_base_new(base, flags);
@@ -859,6 +872,8 @@ dns_inflight_test_impl(void *arg, int flags)
 end:
 	if (dns)
 		evdns_base_free(dns, 0);
+	if (exit_port)
+		evdns_close_server_port(exit_port);
 	regress_clean_dnsserver();
 }
 
@@ -871,7 +886,6 @@ dns_inflight_test(void *arg)
 static void
 dns_disable_when_inactive_test(void *arg)
 {
-	disable_when_inactive = 1;
 	dns_inflight_test_impl(arg, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
 }
 
