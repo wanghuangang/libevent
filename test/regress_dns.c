@@ -923,11 +923,11 @@ dns_disable_when_inactive_no_ns_test(void *arg)
 	tt_int_op(r.addrs, ==, NULL);
 
 end:
-	if (inactive_base)
-		event_base_free(inactive_base);
 	if (dns)
 		evdns_base_free(dns, 0);
 	regress_clean_dnsserver();
+	if (inactive_base)
+		event_base_free(inactive_base);
 }
 
 /* === Test for bufferevent_socket_connect_hostname */
