@@ -907,8 +907,7 @@ dns_disable_when_inactive_no_ns_test(void *arg)
 
 	dns = evdns_base_new(base, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
 	tt_assert(!evdns_base_nameserver_ip_add(dns, buf));
-	tt_assert(! evdns_base_set_option(dns, "timeout:", "1"));
-	tt_assert(! evdns_base_set_option(dns, "initial-probe-timeout:", "1"));
+	tt_assert(! evdns_base_set_option(dns, "initial-probe-timeout:", "0.1"));
 
 	evdns_base_resolve_ipv4(dns, "foof.example.com", 0, generic_dns_callback, &r);
 	n_replies_left = 1;
