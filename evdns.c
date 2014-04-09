@@ -4095,6 +4095,16 @@ evdns_shutdown(int fail_requests)
 	evdns_log_fn = NULL;
 }
 
+void
+hosts_tree_print(struct hosts_tree *root)
+{
+	struct hosts_entry *he;
+	RB_FOREACH(he, hosts_tree, root) {
+		printf("%i: %s: %s (%i)\n",
+			he->hash, he->hostname,
+			inet_ntoa(he->sin.sin_addr), he->families);
+	}
+}
 static int
 evdns_base_parse_hosts_line(struct evdns_base *base, char *line)
 {
@@ -4211,6 +4221,7 @@ evdns_base_load_hosts(struct evdns_base *base, const char *hosts_fname)
 		base = current_base;
 	EVDNS_LOCK(base);
 	res = evdns_base_load_hosts_impl(base, hosts_fname);
+	// hosts_tree_print(&base->hostsdb);
 	EVDNS_UNLOCK(base);
 	return res;
 }
