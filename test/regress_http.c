@@ -3269,6 +3269,13 @@ http_make_web_server(evutil_socket_t fd, short what, void *arg)
 }
 
 static void
+decrement(struct evhttp_connection *evcon, void *arg)
+{
+	int *requests = (int *)arg;
+	--(*requests);
+}
+
+static void
 http_connection_retry_test(void *arg)
 {
 	struct basic_test_data *data = arg;
@@ -3276,6 +3283,7 @@ http_connection_retry_test(void *arg)
 	struct evhttp_connection *evcon = NULL;
 	struct evhttp_request *req = NULL;
 	struct timeval tv, tv_start, tv_end;
+	int requests = 1;
 
 	exit_base = data->base;
 	test_ok = 0;
@@ -3288,6 +3296,7 @@ http_connection_retry_test(void *arg)
 	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
 	tt_assert(evcon);
 
+	evhttp_connection_set_closecb(evcon, decrement, &requests);
 	evhttp_connection_set_timeout(evcon, 1);
 	/* also bind to local host */
 	evhttp_connection_set_local_address(evcon, "127.0.0.1");
@@ -3314,6 +3323,8 @@ http_connection_retry_test(void *arg)
 	evutil_timersub(&tv_end, &tv_start, &tv_end);
 	tt_int_op(tv_end.tv_sec, <, 1);
 
+	tt_int_op(requests, ==, 0);
+	requests = 1;
 	tt_int_op(test_ok, ==, 1);
 
 	/*
@@ -3347,6 +3358,8 @@ http_connection_retry_test(void *arg)
 	/* fails fast, .5 sec to wait to retry, fails fast again. */
 	test_timeval_diff_leq(&tv_start, &tv_end, 500, 200);
 
+	tt_int_op(requests, ==, 0);
+	requests = 1;
 	tt_assert(test_ok == 1);
 
 	/*
@@ -3383,6 +3396,7 @@ http_connection_retry_test(void *arg)
 	/* We'll wait twice as long as we did last time. */
 	test_timeval_diff_leq(&tv_start, &tv_end, 1000, 400);
 
+	tt_int_op(requests, ==, 0);
 	tt_int_op(test_ok, ==, 1);
 
  end:
