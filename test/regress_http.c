@@ -3917,7 +3917,7 @@ struct testcase_t http_testcases[] = {
 	HTTP(stream_in_cancel),
 
 	HTTP(connection_fail),
-	{ "connection_retry", http_connection_retry_test, TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
+	{ "connection_retry", http_connection_retry_test, TT_ISOLATED, &basic_setup, NULL },
 
 	HTTP(data_length_constraints),
 
