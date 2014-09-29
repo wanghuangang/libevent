@@ -3269,6 +3269,13 @@ http_make_web_server(evutil_socket_t fd, short what, void *arg)
 }
 
 static void
+increment(struct evhttp_connection *evcon, void *arg)
+{
+	int *num = (int *)arg;
+	++(*num);
+}
+
+static void
 http_connection_retry_test(void *arg)
 {
 	struct basic_test_data *data = arg;
@@ -3276,6 +3283,7 @@ http_connection_retry_test(void *arg)
 	struct evhttp_connection *evcon = NULL;
 	struct evhttp_request *req = NULL;
 	struct timeval tv, tv_start, tv_end;
+	int closed_times = 0;
 
 	exit_base = data->base;
 	test_ok = 0;
@@ -3288,6 +3296,7 @@ http_connection_retry_test(void *arg)
 	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
 	tt_assert(evcon);
 
+	evhttp_connection_set_closecb(evcon, increment, &closed_times);
 	evhttp_connection_set_timeout(evcon, 1);
 	/* also bind to local host */
 	evhttp_connection_set_local_address(evcon, "127.0.0.1");
@@ -3386,8 +3395,10 @@ http_connection_retry_test(void *arg)
 	tt_int_op(test_ok, ==, 1);
 
  end:
+	tt_int_op(closed_times, ==, 0);
 	if (evcon)
 		evhttp_connection_free(evcon);
+	tt_int_op(closed_times, ==, 1);
 	if (http)
 		evhttp_free(http);
 }
