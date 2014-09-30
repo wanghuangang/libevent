@@ -3432,6 +3432,81 @@ http_connection_retry_test(void *arg)
 		evhttp_free(http);
 }
 
+struct create_hook
+{
+	ev_uint16_t *port;
+	struct basic_test_data *data;
+};
+static void
+create_http_server(evutil_socket_t fd, short events, void *arg)
+{
+	(void)fd;
+	(void)events;
+
+	struct create_hook *info = (struct create_hook *)arg;
+
+	http = http_setup(info->port, info->data->base, 0);
+}
+static void
+http_connection_concurrent_retry_test(void *arg)
+{
+	struct basic_test_data *data = arg;
+	ev_uint16_t port = 0;
+	struct evhttp_connection *evcon = NULL;
+	struct evhttp_request *req = NULL;
+	int closed_times = 0;
+	const struct timeval tv_timeout = { 1, 0 };
+	const struct timeval tv_retry = { 2, 0 };
+	struct event *http_create_timer;
+
+	exit_base = data->base;
+	test_ok = 0;
+
+	http = http_setup(&port, data->base, 0);
+	evhttp_free(http);
+	http = NULL;
+
+	/** Re-create http server after specific timeout */
+	struct create_hook info = { &port, data };
+	http_create_timer = evtimer_new(data->base, create_http_server, &info);
+	evtimer_add(http_create_timer, &tv_retry);
+
+	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
+	tt_assert(evcon);
+
+	evhttp_connection_set_closecb(evcon, increment, &closed_times);
+	evhttp_connection_set_timeout_tv(evcon, &tv_timeout);
+	/* We have 1 sec for timeout, and two secs for restoring http server, to
+	 * make it available after retry activated for first request */
+	evhttp_connection_set_retries(evcon, 2);
+	evhttp_connection_set_initial_retry_tv(evcon, &tv_retry);
+
+	req = evhttp_request_new(http_dispatcher_test_done, data->base);
+	tt_assert(req);
+
+	evhttp_add_header(evhttp_request_get_output_headers(req), "Host", "somehost");
+	if (evhttp_make_request(evcon, req, EVHTTP_REQ_GET, "/?arg=val") == -1) {
+		tt_abort_msg("Couldn't make request");
+	}
+
+	event_base_dispatch(data->base);
+
+	tt_int_op(test_ok, ==, 1);
+	tt_int_op(closed_times, ==, 0);
+	if (evcon) {
+		evhttp_connection_free(evcon);
+		evcon = NULL;
+	}
+	tt_int_op(closed_times, ==, 1);
+
+ end:
+	evtimer_del(http_create_timer);
+	if (evcon)
+		evhttp_connection_free(evcon);
+	if (http)
+		evhttp_free(http);
+}
+
 static void
 http_primitives(void *ptr)
 {
@@ -3958,6 +4033,7 @@ struct testcase_t http_testcases[] = {
 
 	HTTP(connection_fail),
 	{ "connection_retry", http_connection_retry_test, TT_ISOLATED, &basic_setup, NULL },
+	{ "connection_concurrent_retry", http_connection_concurrent_retry_test, TT_ISOLATED, &basic_setup, NULL },
 
 	HTTP(data_length_constraints),
 
