@@ -89,6 +89,7 @@ static void http_post_cb(struct evhttp_request *req, void *arg);
 static void http_put_cb(struct evhttp_request *req, void *arg);
 static void http_delete_cb(struct evhttp_request *req, void *arg);
 static void http_delay_cb(struct evhttp_request *req, void *arg);
+static void http_delay_multi_cb(struct evhttp_request *req, void *arg);
 static void http_large_delay_cb(struct evhttp_request *req, void *arg);
 static void http_badreq_cb(struct evhttp_request *req, void *arg);
 static void http_dispatcher_cb(struct evhttp_request *req, void *arg);
@@ -139,6 +140,7 @@ http_setup(ev_uint16_t *pport, struct event_base *base, int ipv6)
 	evhttp_set_cb(myhttp, "/putit", http_put_cb, base);
 	evhttp_set_cb(myhttp, "/deleteit", http_delete_cb, base);
 	evhttp_set_cb(myhttp, "/delay", http_delay_cb, base);
+	evhttp_set_cb(myhttp, "/delay_multi", http_delay_multi_cb, base);
 	evhttp_set_cb(myhttp, "/largedelay", http_large_delay_cb, base);
 	evhttp_set_cb(myhttp, "/badrequest", http_badreq_cb, base);
 	evhttp_set_cb(myhttp, "/oncomplete", http_on_complete_cb, base);
@@ -508,6 +510,33 @@ http_delay_cb(struct evhttp_request *req, void *arg)
 	tv.tv_usec = 200 * 1000;
 
 	event_base_once(arg, -1, EV_TIMEOUT, http_delay_reply, req, &tv);
+}
+
+static int http_delay_multi_current = 0;
+static void
+http_delay_multi_cb(struct evhttp_request *req, void *arg)
+{
+	struct timeval tv;
+	struct evkeyvalq args;
+	const char *_count, *_sec, *_usec;
+	int count;
+
+	evhttp_parse_query(evhttp_request_get_uri(req), &args);
+	_count = evhttp_find_header(&args, "c");
+	_sec = evhttp_find_header(&args, "sec");
+	_usec = evhttp_find_header(&args, "usec");
+
+	count = _count ? atoi(_count) : 0;
+	tv.tv_usec = _usec ? atoi(_usec) : 0;
+	tv.tv_sec = _sec ? atoi(_sec) : 0;
+
+	if (count > http_delay_multi_current++) {
+		event_base_once(arg, -1, EV_TIMEOUT, http_delay_reply, req, &tv);
+		return;
+	}
+
+	evhttp_send_reply(req, HTTP_OK, "Everything is fine just in time", NULL);
+	++test_ok;
 }
 
 static void
