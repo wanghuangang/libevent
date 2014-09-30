@@ -512,32 +512,95 @@ http_delay_cb(struct evhttp_request *req, void *arg)
 	event_base_once(arg, -1, EV_TIMEOUT, http_delay_reply, req, &tv);
 }
 
+struct multi_hook
+{
+	int current_part;
+	int parts;
+	struct evhttp_request *req;
+	struct timeval tv;
+};
 static int http_delay_multi_current = 0;
+static void
+http_delay_add_reply(evutil_socket_t fd, short what, void *arg)
+{
+	struct multi_hook *info = (struct multi_hook *)arg;
+	struct evbuffer *o = evbuffer_new();
+	evbuffer_add_printf(o, "Everything is fine");
+	evhttp_send_reply_chunk(info->req, o);
+	evbuffer_free(o);
+	++test_ok;
+
+	if (info->parts == ++info->current_part) {
+		evhttp_send_reply_end(info->req);
+		free(info);
+	} else {
+		struct evhttp_connection *evcon = evhttp_request_get_connection(info->req);
+		struct event_base *base;
+
+		if (!evcon) {
+			fprintf(stderr, "FAILED\n");
+			exit(1);
+		}
+		base = evhttp_connection_get_base(evcon);
+
+		event_base_once(base, -1, EV_TIMEOUT, http_delay_add_reply, info, &info->tv);
+	}
+}
+/**
+ * @c - number of requests to give with timeout, the last without
+ * @sec - timeout sec
+ * @usec - timeout usec
+ * @p - number of parts (each after timeout*current_part_no)
+ */
 static void
 http_delay_multi_cb(struct evhttp_request *req, void *arg)
 {
 	struct timeval tv;
 	struct evkeyvalq args;
-	const char *_count, *_sec, *_usec;
-	int count;
+	const char *_count, *_parts, *_sec, *_usec;
+	int count, parts;
 
 	evhttp_parse_query(evhttp_request_get_uri(req), &args);
 	_count = evhttp_find_header(&args, "c");
+	_parts = evhttp_find_header(&args, "p");
 	_sec = evhttp_find_header(&args, "sec");
 	_usec = evhttp_find_header(&args, "usec");
 
+	parts = _parts ? atoi(_parts) : 0;
 	count = _count ? atoi(_count) : 0;
 	tv.tv_usec = _usec ? atoi(_usec) : 0;
 	tv.tv_sec = _sec ? atoi(_sec) : 0;
 
 	if (count > http_delay_multi_current++) {
-		event_base_once(arg, -1, EV_TIMEOUT, http_delay_reply, req, &tv);
-		return;
+		evhttp_send_reply_start(req, HTTP_OK, "OK");
+
+		struct multi_hook *info = calloc(1, sizeof(struct multi_hook));
+		info->req = req;
+		info->parts = parts;
+		info->tv = tv;
+		event_base_once(arg, -1, EV_TIMEOUT, http_delay_add_reply, info, &tv);
+	}
+}
+/** XXX: make it more smart */
+static void
+http_simple_test_done(struct evhttp_request *req, void *arg)
+{
+	struct event_base *base = arg;
+
+	if (evhttp_request_get_response_code(req) != HTTP_OK) {
+		fprintf(stderr, "FAILED\n");
+		exit(1);
 	}
 
-	evhttp_send_reply(req, HTTP_OK, "Everything is fine just in time", NULL);
+	if (evhttp_find_header(evhttp_request_get_input_headers(req), "Content-Type") == NULL) {
+		fprintf(stderr, "FAILED (content type)\n");
+		exit(1);
+	}
+
 	++test_ok;
+	event_base_loopexit(base, NULL);
 }
+
 
 static void
 http_badreq_cb(struct evhttp_request *req, void *arg)
@@ -3440,11 +3503,7 @@ struct create_hook
 static void
 create_http_server(evutil_socket_t fd, short events, void *arg)
 {
-	(void)fd;
-	(void)events;
-
 	struct create_hook *info = (struct create_hook *)arg;
-
 	http = http_setup(info->port, info->data->base, 0);
 }
 static void
@@ -3481,17 +3540,17 @@ http_connection_concurrent_retry_test(void *arg)
 	evhttp_connection_set_retries(evcon, 2);
 	evhttp_connection_set_initial_retry_tv(evcon, &tv_retry);
 
-	req = evhttp_request_new(http_dispatcher_test_done, data->base);
+	req = evhttp_request_new(http_simple_test_done, data->base);
 	tt_assert(req);
 
 	evhttp_add_header(evhttp_request_get_output_headers(req), "Host", "somehost");
-	if (evhttp_make_request(evcon, req, EVHTTP_REQ_GET, "/?arg=val") == -1) {
+	if (evhttp_make_request(evcon, req, EVHTTP_REQ_GET, "/delay_multi?c=1&usec=500000&p=5") == -1) {
 		tt_abort_msg("Couldn't make request");
 	}
 
 	event_base_dispatch(data->base);
 
-	tt_int_op(test_ok, ==, 1);
+	tt_int_op(test_ok, ==, 6);
 	tt_int_op(closed_times, ==, 0);
 	if (evcon) {
 		evhttp_connection_free(evcon);
