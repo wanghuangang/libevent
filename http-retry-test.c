@@ -1,10 +1,14 @@
 #include <event2/http.h>
 #include <event2/event.h>
-#include <event2/buffer.h>
 
 #include <assert.h>
 #include <unistd.h>
 #include <pthread.h>
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 struct Args
 {
@@ -14,9 +18,6 @@ struct Args
 	struct {
 		struct event_base *base;
 	} client;
-	struct {
-		struct event_base *base;
-	} server;
 };
 
 static void
@@ -26,7 +27,6 @@ http_dispatcher_test_done(struct evhttp_request *req, void *arg)
 
 	puts("Page downloaded, stopping event bases");
 	event_base_loopexit(args->client.base, NULL);
-	event_base_loopexit(args->server.base, NULL);
 }
 void *client(void *arg)
 {
@@ -62,36 +62,34 @@ void *client(void *arg)
 	return NULL;
 }
 
-void http_dispatcher_cb(struct evhttp_request *req, void *arg)
-{
-	struct evbuffer *evb = evbuffer_new();
-	evbuffer_add_printf(evb, "DISPATCHER_TEST");
-	evhttp_send_reply(req, HTTP_OK, "Everything is fine", evb);
-	evbuffer_free(evb);
-}
 void *server(void *arg)
 {
 	struct Args *args = (struct Args *)arg;
-	struct evhttp *http;
-	struct evhttp_bound_socket *sock;
-	struct event_base *base;
+	struct sockaddr_in addr;
+	int fd, err;
+	struct timespec t = { 1 };
 
-	base = event_base_new();
-	assert(base);
-	args->server.base = base;
+	fd = socket(PF_INET, SOCK_STREAM|SOCK_CLOEXEC, IPPROTO_IP);
+	assert(fd >= 0);
 
-	http = evhttp_new(base);
-	assert(http);
+	addr.sin_port = ntohs(args->port);
+	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	addr.sin_family = AF_INET;
+	err = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+	assert(!err);
 
-	sock = evhttp_bind_socket_with_handle(http, "127.0.0.1", args->port);
-	assert(sock);
+	err = listen(fd, 1);
+	assert(!err);
 
-	evhttp_set_cb(http, "/", http_dispatcher_cb, args);
-	event_base_dispatch(base);
+	nanosleep(&t, NULL);
+
+	socklen_t addrSize = sizeof(addr);
+	int clientFd = accept(fd, (struct sockaddr *)&addr, &addrSize);
+	assert(clientFd >= 0);
+	close(clientFd);
+
+	close(fd);
 	puts("Server stopped");
-
-	evhttp_free(http);
-	event_base_free(base);
 
 	return NULL;
 }
