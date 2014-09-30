@@ -35,7 +35,7 @@ void *client(void *arg)
 	struct evhttp_connection *evcon;
 	struct evhttp_request *req;
 	const struct timeval tv_timeout = { 0, 500000 };
-	const struct timeval tv_retry = { 0, 500000 };
+	const struct timeval tv_retry = { 2, 0 };
 
 	base = event_base_new();
 	assert(base);
