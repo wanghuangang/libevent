@@ -1844,6 +1844,33 @@ end:
 }
 
 static void
+test_evbuffer_peek_zero(void *info)
+{
+	struct evbuffer *buf = NULL, *tmp_buf = NULL;
+	int i;
+	struct evbuffer_ptr ptr;
+
+	/* Let's make a very fragmented buffer. */
+	buf = evbuffer_new();
+	tmp_buf = evbuffer_new();
+	evbuffer_add_printf(tmp_buf, "Contents of chunk 100\n");
+	evbuffer_add_buffer(buf, tmp_buf);
+	evbuffer_add_printf(tmp_buf, "Contents of chunk 1\n");
+	evbuffer_add_buffer(buf, tmp_buf);
+
+	/* advance to the start of another chain. */
+	evbuffer_ptr_set(buf, &ptr, 0, EVBUFFER_PTR_SET);
+	i = evbuffer_peek(buf, -1, &ptr, NULL, 0);
+	tt_int_op(i, ==, 2);
+
+end:
+	if (buf)
+		evbuffer_free(buf);
+	if (tmp_buf)
+		evbuffer_free(tmp_buf);
+}
+
+static void
 test_evbuffer_peek(void *info)
 {
 	struct evbuffer *buf = NULL, *tmp_buf = NULL;
@@ -1939,6 +1966,12 @@ test_evbuffer_peek(void *info)
 	tt_int_op(i, ==, 2);
 	tt_iov_eq(&v[0], "Contents of chunk [2]\n");
 	tt_iov_eq(&v[1], "Contents of chunk [3]\n"); /*more than we asked for*/
+
+	/* advance to the start of another chain. */
+	memset(v, 0, sizeof(v));
+	evbuffer_ptr_set(buf, &ptr, 0, EVBUFFER_PTR_SET);
+	i = evbuffer_peek(buf, -1, &ptr, NULL, 0);
+	tt_int_op(i, ==, 16);
 
 	/* peek at the end of the buffer */
 	memset(v, 0, sizeof(v));
@@ -2210,6 +2243,7 @@ struct testcase_t evbuffer_testcases[] = {
 	{ "multicast_drain", test_evbuffer_multicast_drain, 0, NULL, NULL },
 	{ "prepend", test_evbuffer_prepend, TT_FORK, NULL, NULL },
 	{ "peek", test_evbuffer_peek, 0, NULL, NULL },
+	{ "peek_zero", test_evbuffer_peek_zero, 0, NULL, NULL },
 	{ "freeze_start", test_evbuffer_freeze, 0, &nil_setup, (void*)"start" },
 	{ "freeze_end", test_evbuffer_freeze, 0, &nil_setup, (void*)"end" },
 	{ "add_iovec", test_evbuffer_add_iovec, 0, NULL, NULL},
