@@ -1266,10 +1266,15 @@ be_openssl_ctrl(struct bufferevent *bev,
     enum bufferevent_ctrl_op op, union bufferevent_ctrl_data *data)
 {
 	struct bufferevent_openssl *bev_ssl = upcast(bev);
+	BIO *bio = SSL_get_wbio(bev_ssl->ssl);
+	int old_fd;
+
 	switch (op) {
 	case BEV_CTRL_SET_FD:
 		if (bev_ssl->underlying)
 			return -1;
+		old_fd = BIO_get_fd(bio, NULL);
+
 		{
 			BIO *bio;
 			bio = BIO_new_socket(data->fd, 0);
@@ -1278,6 +1283,11 @@ be_openssl_ctrl(struct bufferevent *bev,
 		}
 		if (data->fd == -1)
 			bev_ssl->fd_is_set = 0;
+		else if (old_fd < 0 && data->fd != -1) {
+			/** Reconnect after close */
+			bev_ssl->state = BUFFEREVENT_SSL_CONNECTING;
+			SSL_set_connect_state(bev_ssl->ssl);
+		}
 		if (bev_ssl->state == BUFFEREVENT_SSL_OPEN)
 			return set_open_callbacks(bev_ssl, data->fd);
 		else {
