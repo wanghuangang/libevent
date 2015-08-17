@@ -93,6 +93,7 @@ static void http_large_delay_cb(struct evhttp_request *req, void *arg);
 static void http_badreq_cb(struct evhttp_request *req, void *arg);
 static void http_dispatcher_cb(struct evhttp_request *req, void *arg);
 static void http_on_complete_cb(struct evhttp_request *req, void *arg);
+static void http_on_keep_alive_no_length(struct evhttp_request *req, void *arg);
 
 static int
 http_bind(struct evhttp *myhttp, ev_uint16_t *pport, int ipv6)
@@ -142,6 +143,7 @@ http_setup(ev_uint16_t *pport, struct event_base *base, int ipv6)
 	evhttp_set_cb(myhttp, "/largedelay", http_large_delay_cb, base);
 	evhttp_set_cb(myhttp, "/badrequest", http_badreq_cb, base);
 	evhttp_set_cb(myhttp, "/oncomplete", http_on_complete_cb, base);
+	evhttp_set_cb(myhttp, "/keep_alive_no_length", http_on_keep_alive_no_length, base);
 	evhttp_set_cb(myhttp, "/", http_dispatcher_cb, base);
 	return (myhttp);
 }
@@ -788,6 +790,20 @@ http_on_complete_cb(struct evhttp_request *req, void *arg)
 	evbuffer_free(evb);
 
 	++test_ok;
+}
+
+static void
+http_on_keep_alive_no_length(struct evhttp_request *req, void *arg)
+{
+	struct evbuffer *evb = evbuffer_new();
+	struct evkeyvalq *h = evhttp_request_get_output_headers(req);
+
+	event_debug(("%s: called\n", __func__));
+	evhttp_add_header(h, "Connection", "Keep-Alive");
+	evhttp_add_header(h, "Content-Length", "0");
+	evhttp_send_reply(req, HTTP_OK, "Everything is fine", evb);
+
+	evbuffer_free(evb);
 }
 
 static void
@@ -3929,6 +3945,51 @@ http_set_family_ipv6_test(void *arg)
 	http_ipv6_for_domain_test_impl(arg, AF_INET6);
 }
 
+static void
+http_keep_alive_no_length_done(struct evhttp_request *req, void *arg)
+{
+	++test_ok;
+	if (test_ok == 1) {
+		EVUTIL_ASSERT(exit_base);
+		event_base_loopexit(exit_base, NULL);
+	}
+}
+static void
+http_keep_alive_no_length_test(void *arg)
+{
+	struct basic_test_data *data = arg;
+	ev_uint16_t port = 0;
+	struct evhttp_connection *evcon = NULL;
+	struct evhttp_request *req[2];
+	int i;
+
+	test_ok = -1;
+	exit_base = data->base;
+
+	http = http_setup(&port, data->base, 0);
+
+	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
+	tt_assert(evcon);
+	evhttp_connection_set_closecb(evcon, http_request_get_addr_on_close, arg);
+	evhttp_connection_set_timeout(evcon, 5);
+
+	for (i = 0; i < 2; ++i) {
+		req[i] = evhttp_request_new(http_keep_alive_no_length_done, NULL);
+
+		if (evhttp_make_request(evcon, req[i], EVHTTP_REQ_GET, "/keep_alive_no_length") == -1) {
+			tt_abort_msg("Couldn't make request");
+		}
+	}
+
+	event_base_dispatch(data->base);
+
+ end:
+	if (evcon)
+		evhttp_connection_free(evcon);
+	if (http)
+		evhttp_free(http);
+}
+
 #define HTTP_LEGACY(name)						\
 	{ #name, run_legacy_test_fn, TT_ISOLATED|TT_LEGACY, &legacy_setup, \
 		    http_##name##_test }
@@ -3985,6 +4046,7 @@ struct testcase_t http_testcases[] = {
 	HTTP(set_family),
 	HTTP(set_family_ipv4),
 	HTTP(set_family_ipv6),
+	HTTP(keep_alive_no_length),
 
 	END_OF_TESTCASES
 };
