@@ -4703,6 +4703,7 @@ evdns_getaddrinfo(struct evdns_base *dns_base,
 	 * launching those requests. (XXX we don't do that yet.)
 	 */
 
+	EVDNS_LOCK(dns_base);
 	if (hints.ai_family != PF_INET6) {
 		log(EVDNS_LOG_DEBUG, "Sending request for %s on ipv4 as %p",
 		    nodename, &data->ipv4_request);
@@ -4725,11 +4726,13 @@ evdns_getaddrinfo(struct evdns_base *dns_base,
 			data->ipv6_request.r->current_req->put_cname_in_ptr =
 			    &data->cname_result;
 	}
+	int r = data->ipv4_request.r || data->ipv6_request.r;
+	EVDNS_UNLOCK(dns_base);
 
 	evtimer_assign(&data->timeout, dns_base->event_base,
 	    evdns_getaddrinfo_timeout_cb, data);
 
-	if (data->ipv4_request.r || data->ipv6_request.r) {
+	if (r) {
 		return data;
 	} else {
 		mm_free(data);
