@@ -2514,6 +2514,8 @@ evhttp_make_request(struct evhttp_connection *evcon,
     struct evhttp_request *req,
     enum evhttp_cmd_type type, const char *uri)
 {
+	int ret = 0;
+
 	/* We are making a request */
 	req->kind = EVHTTP_REQUEST;
 	req->type = type;
@@ -2535,19 +2537,20 @@ evhttp_make_request(struct evhttp_connection *evcon,
 	req->evcon = evcon;
 	EVUTIL_ASSERT(!(req->flags & EVHTTP_REQ_OWN_CONNECTION));
 
+	bufferevent_lock(evcon->bufev);
 	TAILQ_INSERT_TAIL(&evcon->requests, req, next);
 
 	/* If the connection object is not connected; make it so */
 	if (!evhttp_connected(evcon)) {
-		int res = evhttp_connection_connect_(evcon);
+		ret = evhttp_connection_connect_(evcon);
 		/* evhttp_connection_fail_(), which is called through
 		 * evhttp_connection_connect_(), assumes that req lies in
 		 * evcon->requests.  Thus, enqueue the request in advance and
 		 * remove it in the error case. */
-		if (res != 0)
+		if (ret != 0)
 			TAILQ_REMOVE(&evcon->requests, req, next);
 
-		return res;
+		goto unlock;
 	}
 
 	/*
@@ -2558,7 +2561,10 @@ evhttp_make_request(struct evhttp_connection *evcon,
 	if (TAILQ_FIRST(&evcon->requests) == req)
 		evhttp_request_dispatch(evcon);
 
-	return (0);
+unlock:
+	bufferevent_unlock(evcon->bufev);
+
+	return ret;
 }
 
 void
