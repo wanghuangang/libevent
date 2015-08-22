@@ -20,8 +20,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <pthread.h>
-#include <unistd.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -40,7 +38,6 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 #include <event2/http.h>
-#include <event2/thread.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -50,13 +47,6 @@
 
 static struct event_base *base;
 static int ignore_cert = 0;
-
-static void*
-evbase_thread(void* p)
-{
-	event_base_loop(base, EVLOOP_NO_EXIT_ON_EMPTY);
-	return NULL;
-}
 
 static void
 http_request_done(struct evhttp_request *req, void *ctx)
@@ -212,14 +202,12 @@ main(int argc, char **argv)
 	struct evkeyvalq *output_headers;
 	struct evbuffer *output_buffer;
 
-	pthread_t thr;
-
 	int i;
 	int ret = 0;
 	enum { HTTP, HTTPS } type = HTTP;
 
 	event_enable_debug_mode();
-	evthread_use_pthreads();
+	event_enable_debug_logging(EVENT_DBG_ALL);
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-url", argv[i])) {
@@ -374,8 +362,6 @@ main(int argc, char **argv)
 		goto error;
 	}
 
-	pthread_create(&thr, NULL, evbase_thread, NULL);
-
 	// Create OpenSSL bufferevent and stack evhttp on top of it
 	ssl = SSL_new(ssl_ctx);
 	if (ssl == NULL) {
@@ -389,7 +375,7 @@ main(int argc, char **argv)
 	#endif
 
 	if (strcasecmp(scheme, "http") == 0) {
-		bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE);
+		bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 	} else {
 		type = HTTPS;
 		bev = bufferevent_openssl_socket_new(base, -1, ssl,
@@ -413,55 +399,51 @@ main(int argc, char **argv)
 		goto error;
 	}
 
+	evhttp_connection_set_timeout(evcon, 1);
 	if (retries > 0) {
 		evhttp_connection_set_retries(evcon, retries);
 	}
 
-	for (i = 0; i < 100;++i) {
-		// Fire off the request
-		req = evhttp_request_new(http_request_done, bev);
-		if (req == NULL) {
-			fprintf(stderr, "evhttp_request_new() failed\n");
-			goto error;
-		}
-
-		output_headers = evhttp_request_get_output_headers(req);
-		evhttp_add_header(output_headers, "Host", host);
-		evhttp_add_header(output_headers, "Connection", "close");
-
-		if (data_file) {
-			/* NOTE: In production code, you'd probably want to use
-			 * evbuffer_add_file() or evbuffer_add_file_segment(), to
-			 * avoid needless copying. */
-			FILE * f = fopen(data_file, "rb");
-			char buf[1024];
-			size_t s;
-			size_t bytes = 0;
-
-			if (!f) {
-				syntax();
-				goto error;
-			}
-
-			output_buffer = evhttp_request_get_output_buffer(req);
-			while ((s = fread(buf, 1, sizeof(buf), f)) > 0) {
-				evbuffer_add(output_buffer, buf, s);
-				bytes += s;
-			}
-			evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)bytes);
-			evhttp_add_header(output_headers, "Content-Length", buf);
-			fclose(f);
-		}
-
-		r = evhttp_make_request(evcon, req, data_file ? EVHTTP_REQ_POST : EVHTTP_REQ_GET, uri);
-		if (r != 0) {
-			fprintf(stderr, "evhttp_make_request() failed\n");
-			goto error;
-		}
+	// Fire off the request
+	req = evhttp_request_new(http_request_done, bev);
+	if (req == NULL) {
+		fprintf(stderr, "evhttp_request_new() failed\n");
+		goto error;
 	}
 
-	for (;;)
-		sleep(1);
+	output_headers = evhttp_request_get_output_headers(req);
+	evhttp_add_header(output_headers, "Host", host);
+	evhttp_add_header(output_headers, "Connection", "close");
+
+	if (data_file) {
+		/* NOTE: In production code, you'd probably want to use
+		 * evbuffer_add_file() or evbuffer_add_file_segment(), to
+		 * avoid needless copying. */
+		FILE * f = fopen(data_file, "rb");
+		char buf[1024];
+		size_t s;
+		size_t bytes = 0;
+
+		if (!f) {
+			syntax();
+			goto error;
+		}
+
+		output_buffer = evhttp_request_get_output_buffer(req);
+		while ((s = fread(buf, 1, sizeof(buf), f)) > 0) {
+			evbuffer_add(output_buffer, buf, s);
+			bytes += s;
+		}
+		evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)bytes);
+		evhttp_add_header(output_headers, "Content-Length", buf);
+		fclose(f);
+	}
+
+	r = evhttp_make_request(evcon, req, data_file ? EVHTTP_REQ_POST : EVHTTP_REQ_GET, uri);
+	if (r != 0) {
+		fprintf(stderr, "evhttp_make_request() failed\n");
+		goto error;
+	}
 
 	event_base_dispatch(base);
 	goto cleanup;
