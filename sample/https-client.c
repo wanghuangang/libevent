@@ -473,5 +473,7 @@ cleanup:
 	WSACleanup();
 #endif
 
+	libevent_global_shutdown();
+
 	return ret;
 }
