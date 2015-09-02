@@ -178,6 +178,7 @@ static int test_is_done = 0;
 static int n_connected = 0;
 static int got_close = 0;
 static int got_error = 0;
+static int got_timeout = 0;
 static int renegotiate_at = -1;
 static int stop_when_connected = 0;
 static int pending_connect_events = 0;
@@ -312,6 +313,16 @@ eventcb(struct bufferevent *bev, short what, void *ctx)
 			bufferevent_openssl_check_freed(bev);
 		}
 		bufferevent_free(bev);
+	} else if (what & BEV_EVENT_TIMEOUT) {
+		TT_BLATHER(("Got timeout."));
+		++got_timeout;
+		if (type & REGRESS_OPENSSL_FD) {
+			bufferevent_openssl_check_fd(bev, type & REGRESS_OPENSSL_FILTER);
+		}
+		if (type & REGRESS_OPENSSL_FREED) {
+			bufferevent_openssl_check_freed(bev);
+		}
+		bufferevent_free(bev);
 	}
 end:
 	;
@@ -439,6 +450,7 @@ regress_bufferevent_openssl(void *arg)
 		} else {
 			tt_int_op(got_error, ==, 1);
 		}
+		tt_int_op(got_timeout, ==, 0);
 	} else {
 		struct timeval t = { 2 };
 
@@ -455,7 +467,8 @@ regress_bufferevent_openssl(void *arg)
 		tt_assert(n_connected == 0);
 
 		tt_int_op(got_close, ==, 0);
-		tt_int_op(got_error, ==, 1);
+		tt_int_op(got_error, ==, 0);
+		tt_int_op(got_timeout, ==, 1);
 	}
 end:
 	return;
