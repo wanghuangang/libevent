@@ -1092,7 +1092,6 @@ set_handshake_callbacks(struct bufferevent_openssl *bev_ssl, evutil_socket_t fd)
 		struct bufferevent *bev = &bev_ssl->bev.bev;
 		int r1=0, r2=0;
 
-		/** INVEST/XXX: why */
 		if (event_initialized(&bev->ev_read)) {
 			event_del(&bev->ev_read);
 			event_del(&bev->ev_write);
