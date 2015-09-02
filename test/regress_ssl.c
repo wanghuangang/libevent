@@ -567,6 +567,9 @@ struct testcase_t ssl_testcases[] = {
 	{ "bufferevent_socketpair_freed", regress_bufferevent_openssl,
 	  TT_ISOLATED, &basic_setup,
 	  T(REGRESS_OPENSSL_SOCKETPAIR | REGRESS_OPENSSL_FREED) },
+	{ "bufferevent_socketpair_freed_fd", regress_bufferevent_openssl,
+	  TT_ISOLATED, &basic_setup,
+	  T(REGRESS_OPENSSL_SOCKETPAIR | REGRESS_OPENSSL_FREED | REGRESS_OPENSSL_FD) },
 #undef T
 
 	{ "bufferevent_connect", regress_bufferevent_openssl_connect,
