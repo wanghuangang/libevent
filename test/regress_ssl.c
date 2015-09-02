@@ -196,6 +196,7 @@ enum regress_openssl_type
 	REGRESS_OPENSSL_SERVER = 128,
 
 	REGRESS_OPENSSL_FREED = 256,
+	REGRESS_OPENSSL_TIMEOUT = 512,
 };
 
 static void
@@ -420,21 +421,40 @@ regress_bufferevent_openssl(void *arg)
 		    fd_pair, bev_ll, type);
 	}
 
-	bufferevent_enable(bev1, EV_READ|EV_WRITE);
-	bufferevent_enable(bev2, EV_READ|EV_WRITE);
+	if (!(type & REGRESS_OPENSSL_TIMEOUT)) {
+		bufferevent_enable(bev1, EV_READ|EV_WRITE);
+		bufferevent_enable(bev2, EV_READ|EV_WRITE);
 
-	evbuffer_add_printf(bufferevent_get_output(bev1), "1\n");
+		evbuffer_add_printf(bufferevent_get_output(bev1), "1\n");
 
-	event_base_dispatch(data->base);
+		event_base_dispatch(data->base);
 
-	tt_assert(test_is_done == 1);
-	tt_assert(n_connected == 2);
+		tt_assert(test_is_done == 1);
+		tt_assert(n_connected == 2);
 
-	/* We don't handle shutdown properly yet */
-	if (type & REGRESS_OPENSSL_DIRTY_SHUTDOWN) {
-		tt_int_op(got_close, ==, 1);
-		tt_int_op(got_error, ==, 0);
+		/* We don't handle shutdown properly yet */
+		if (type & REGRESS_OPENSSL_DIRTY_SHUTDOWN) {
+			tt_int_op(got_close, ==, 1);
+			tt_int_op(got_error, ==, 0);
+		} else {
+			tt_int_op(got_error, ==, 1);
+		}
 	} else {
+		struct timeval t = { 2 };
+
+		bufferevent_enable(bev1, EV_READ|EV_WRITE);
+		bufferevent_disable(bev2, EV_READ|EV_WRITE);
+
+		bufferevent_set_timeouts(bev1, &t, &t);
+
+		evbuffer_add_printf(bufferevent_get_output(bev1), "1\n");
+
+		event_base_dispatch(data->base);
+
+		tt_assert(test_is_done == 0);
+		tt_assert(n_connected == 0);
+
+		tt_int_op(got_close, ==, 0);
 		tt_int_op(got_error, ==, 1);
 	}
 end:
@@ -578,6 +598,10 @@ struct testcase_t ssl_testcases[] = {
 	{ "bufferevent_filter_freed_fd", regress_bufferevent_openssl,
 	  TT_ISOLATED, &basic_setup,
 	  T(REGRESS_OPENSSL_FILTER | REGRESS_OPENSSL_FREED | REGRESS_OPENSSL_FD) },
+
+	{ "bufferevent_socketpair_timeout", regress_bufferevent_openssl,
+	  TT_ISOLATED, &basic_setup,
+	  T(REGRESS_OPENSSL_SOCKETPAIR | REGRESS_OPENSSL_TIMEOUT) },
 #undef T
 
 	{ "bufferevent_connect", regress_bufferevent_openssl_connect,
