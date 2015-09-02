@@ -211,8 +211,8 @@ end:
 static void
 bufferevent_openssl_check_freed(struct bufferevent *bev)
 {
-	short flags = event_pending(&bev->ev_read, EVLIST_ALL, NULL);
-	tt_int_op(flags, ==, 0);
+	tt_int_op(event_pending(&bev->ev_read, EVLIST_ALL, NULL), ==, 0);
+	tt_int_op(event_pending(&bev->ev_write, EVLIST_ALL, NULL), ==, 0);
 
 end:
 	;
