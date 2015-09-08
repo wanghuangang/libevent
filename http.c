@@ -2180,9 +2180,6 @@ evhttp_read_header(struct evhttp_connection *evcon,
 		return;
 	}
 
-	/* Disable reading for now */
-	bufferevent_disable(evcon->bufev, EV_READ);
-
 	/* Callback can shut down connection with negative return value */
 	if (req->header_cb != NULL) {
 		if ((*req->header_cb)(req, req->cb_arg) < 0) {
