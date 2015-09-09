@@ -597,6 +597,7 @@ static int bufferevent_connect_test_flags = 0;
 static int bufferevent_trigger_test_flags = 0;
 static int n_strings_read = 0;
 static int n_reads_invoked = 0;
+static int n_events_invoked = 0;
 
 #define TEST_STR "Now is the time for all good events to signal for " \
 	"the good of their protocol"
@@ -643,6 +644,14 @@ reader_eventcb(struct bufferevent *bev, short what, void *ctx)
 	}
 end:
 	;
+}
+
+static void
+reader_eventcb_simple(struct bufferevent *bev, short what, void *ctx)
+{
+	TT_BLATHER(("Read eventcb simple invoked on %d.",
+		(int)bufferevent_getfd(bev)));
+	n_events_invoked++;
 }
 
 static void
@@ -728,6 +737,63 @@ end:
 
 	if (bev2)
 		bufferevent_free(bev2);
+}
+
+static void
+test_bufferevent_socket_disconnected(void *arg)
+{
+	struct basic_test_data *data = arg;
+	int flags = (long)data->setup_data;
+	struct bufferevent *bev = NULL;
+	struct evconnlistener *lev = NULL;
+	struct sockaddr_in localhost;
+	struct sockaddr_storage ss;
+	struct sockaddr *sa;
+	ev_socklen_t slen;
+
+	memset(&localhost, 0, sizeof(localhost));
+	localhost.sin_port = 0; /* pick-a-port */
+	localhost.sin_addr.s_addr = htonl(0x7f000001L);
+	localhost.sin_family = AF_INET;
+	sa = (struct sockaddr *)&localhost;
+	lev = evconnlistener_new_bind(data->base, listen_cb, data->base,
+		LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE,
+		16, sa, sizeof(localhost));
+	tt_assert(lev);
+
+	sa = (struct sockaddr *)&ss;
+	slen = sizeof(ss);
+	if (regress_get_listener_addr(lev, sa, &slen) < 0) {
+		tt_abort_perror("getsockname");
+	}
+	/* Just to add some guarantee that this port will not be in LISTEN state */
+	evconnlistener_free(lev);
+	lev = NULL;
+
+	tt_int_op(n_events_invoked, ==, 0);
+
+	bev = bufferevent_socket_new(data->base, -1,
+		flags | BEV_OPT_CLOSE_ON_FREE);
+	tt_assert(bev);
+	bufferevent_setcb(bev, NULL, NULL, reader_eventcb_simple, data->base);
+	bufferevent_enable(bev, EV_READ|EV_WRITE);
+	tt_want(!bufferevent_socket_connect(bev, sa, sizeof(localhost)));
+
+	if (flags & BEV_OPT_DEFER_CALLBACKS) {
+		tt_int_op(n_events_invoked, ==, 0);
+	} else {
+		tt_int_op(n_events_invoked, ==, 1);
+	}
+
+	event_base_dispatch(data->base);
+
+	tt_int_op(n_events_invoked, ==, 1);
+
+end:
+	if (lev)
+		evconnlistener_free(lev);
+	if (bev)
+		bufferevent_free(bev);
 }
 
 static void
@@ -1137,6 +1203,13 @@ struct testcase_t bufferevent_testcases[] = {
 #else
 	{ "bufferevent_zlib", NULL, TT_SKIP, NULL, NULL },
 #endif
+
+	{ "bufferevent_socket_disconnected_defer",
+	  test_bufferevent_socket_disconnected,
+	  TT_FORK|TT_NEED_BASE, &basic_setup, (void*)BEV_OPT_DEFER_CALLBACKS },
+	{ "bufferevent_socket_disconnected",
+	  test_bufferevent_socket_disconnected,
+	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 
 	END_OF_TESTCASES,
 };
