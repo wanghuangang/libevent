@@ -1235,5 +1235,13 @@ struct testcase_t bufferevent_iocp_testcases[] = {
 	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup,
 	  (void*)"unset_connectex" },
 
+	{ "bufferevent_socket_disconnected_defer",
+	  test_bufferevent_socket_disconnected,
+	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup,
+	  (void*)BEV_OPT_DEFER_CALLBACKS },
+	{ "bufferevent_socket_disconnected",
+	  test_bufferevent_socket_disconnected,
+	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup, NULL },
+
 	END_OF_TESTCASES,
 };
