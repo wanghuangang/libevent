@@ -536,6 +536,7 @@ be_filter_ctrl(struct bufferevent *bev, enum bufferevent_ctrl_op op,
 		bevf = upcast(bev);
 		data->ptr = bevf->underlying;
 		return 0;
+	case BEV_CTRL_GET_FD:
 	case BEV_CTRL_SET_FD:
 		bevf = upcast(bev);
 
@@ -545,7 +546,6 @@ be_filter_ctrl(struct bufferevent *bev, enum bufferevent_ctrl_op op,
 		    return (bevf->underlying->be_ops->ctrl)(bevf->underlying, op, data);
 		}
 
-	case BEV_CTRL_GET_FD:
 	case BEV_CTRL_CANCEL_ALL:
 	default:
 		return -1;
