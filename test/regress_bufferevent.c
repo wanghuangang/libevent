@@ -1151,6 +1151,34 @@ end:
 		bufferevent_free(bev);
 }
 
+static void
+test_bufferevent_socket_filter_fd(void *arg)
+{
+	struct basic_test_data *data = arg;
+	struct bufferevent *bev = NULL, *bevf = NULL;
+	test_ok = 0;
+
+	bev = bufferevent_socket_new(data->base, -1, 0);
+	tt_int_op(bufferevent_getfd(bev), ==, -1);
+
+	bevf = bufferevent_filter_new(bev, NULL, NULL, 0, NULL, NULL);
+	tt_int_op(bufferevent_getfd(bevf), ==, -1);
+
+	bufferevent_setfd(bevf, 2);
+
+	tt_int_op(bufferevent_getfd(bevf), ==, 2);
+	tt_int_op(bufferevent_getfd(bev), ==, 2);
+
+	test_ok = 1;
+
+end:
+	if (bevf)
+		bufferevent_free(bevf);
+	if (bev)
+		bufferevent_free(bev);
+}
+
+
 struct testcase_t bufferevent_testcases[] = {
 
 	LEGACY(bufferevent, TT_ISOLATED),
@@ -1207,6 +1235,10 @@ struct testcase_t bufferevent_testcases[] = {
 	  TT_FORK|TT_NEED_BASE, &basic_setup, (void*)BEV_OPT_DEFER_CALLBACKS },
 	{ "bufferevent_connect_fail_eventcb",
 	  test_bufferevent_connect_fail_eventcb,
+	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
+
+	{ "bufferevent_socket_filter_fd",
+	  test_bufferevent_socket_filter_fd,
 	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 
 	END_OF_TESTCASES,
