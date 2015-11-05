@@ -3382,6 +3382,66 @@ http_make_web_server(evutil_socket_t fd, short what, void *arg)
 }
 
 static void
+http_simple_test_impl(void *arg, int ssl, int dirty)
+{
+	struct basic_test_data *data = arg;
+	struct evhttp_connection *evcon = NULL;
+	struct evhttp_request *req = NULL;
+	struct bufferevent *bev;
+	struct http_server hs = { .port = 0, .ssl = ssl, };
+
+	exit_base = data->base;
+	test_ok = 0;
+
+	http = http_setup(&hs.port, data->base, ssl ? HTTP_BIND_SSL : 0);
+
+	if (!ssl) {
+		bev = bufferevent_socket_new(data->base, -1, 0);
+	} else {
+		SSL *ssl = SSL_new(get_ssl_ctx());
+		bev = bufferevent_openssl_socket_new(
+			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, 0);
+		if (dirty)
+			bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
+	}
+	evcon = evhttp_connection_base_bufferevent_new(
+		data->base, NULL, bev, "127.0.0.1", hs.port);
+	tt_assert(evcon);
+	evhttp_connection_set_local_address(evcon, "127.0.0.1");
+
+	req = evhttp_request_new(http_request_done, (void*) BASIC_REQUEST_BODY);
+	tt_assert(req);
+
+	if (evhttp_make_request(evcon, req, EVHTTP_REQ_GET, "/test") == -1) {
+		tt_abort_msg("Couldn't make request");
+	}
+
+	event_base_dispatch(data->base);
+	tt_int_op(test_ok, ==, 1);
+
+ end:
+	if (evcon)
+		evhttp_connection_free(evcon);
+	if (http)
+		evhttp_free(http);
+}
+static void
+http_simple_test(void *arg)
+{
+	return http_simple_test_impl(arg, 0, 0);
+}
+static void
+https_simple_test(void *arg)
+{
+	return http_simple_test_impl(arg, 1, 0);
+}
+static void
+https_simple_dirty_test(void *arg)
+{
+	return http_simple_test_impl(arg, 1, 1);
+}
+
+static void
 http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base *dns_base, int ssl)
 {
 	struct basic_test_data *data = arg;
@@ -4168,6 +4228,7 @@ struct testcase_t http_testcases[] = {
 	{ "parse_uri_nc", http_parse_uri_test, 0, &basic_setup, (void*)"nc" },
 	{ "uriencode", http_uriencode_test, 0, NULL, NULL },
 	HTTP(basic),
+	HTTP(simple),
 	HTTP(cancel),
 	HTTP(virtual_host),
 	HTTP(post),
@@ -4216,6 +4277,8 @@ struct testcase_t http_testcases[] = {
 	HTTP(request_own),
 
 #ifdef EVENT__HAVE_OPENSSL
+	HTTPS(simple),
+	HTTPS(simple_dirty),
 	{ "https_connection_retry", https_connection_retry_test, TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
 	{ "https_connection_retry_conn_address", https_connection_retry_conn_address_test,
 	  TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
