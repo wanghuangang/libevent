@@ -136,7 +136,7 @@ https_bev(struct event_base *base, void *arg)
 
 	return bufferevent_openssl_socket_new(
 		base, -1, ssl, BUFFEREVENT_SSL_ACCEPTING,
-		BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
+		BEV_OPT_CLOSE_ON_FREE);
 }
 static struct evhttp *
 http_setup(ev_uint16_t *pport, struct event_base *base, int mask)
