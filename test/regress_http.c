@@ -2826,6 +2826,10 @@ http_incomplete_readcb(struct bufferevent *bev, void *arg)
 static void
 http_incomplete_errorcb(struct bufferevent *bev, short what, void *arg)
 {
+	/** For ssl */
+	if (what & BEV_EVENT_CONNECTED)
+		return;
+
 	if (what == (BEV_EVENT_READING|BEV_EVENT_EOF))
 		test_ok++;
 	else
