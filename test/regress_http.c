@@ -3400,7 +3400,8 @@ http_simple_test_impl(void *arg, int ssl, int dirty)
 	} else {
 		SSL *ssl = SSL_new(get_ssl_ctx());
 		bev = bufferevent_openssl_socket_new(
-			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, 0);
+			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
+			BEV_OPT_DEFER_CALLBACKS);
 		if (dirty)
 			bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
 	}
