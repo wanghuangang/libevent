@@ -301,9 +301,8 @@ static void
 http_errorcb(struct bufferevent *bev, short what, void *arg)
 {
 	/** For ssl */
-	if (what & BEV_EVENT_CONNECTED) {
+	if (what & BEV_EVENT_CONNECTED)
 		return;
-	}
 	test_ok = -2;
 	event_base_loopexit(arg, NULL);
 }
