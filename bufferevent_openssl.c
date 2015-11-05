@@ -1102,16 +1102,8 @@ set_handshake_callbacks(struct bufferevent_openssl *bev_ssl, evutil_socket_t fd)
 		event_assign(&bev->ev_write, bev->ev_base, fd,
 		    EV_WRITE|EV_PERSIST|EV_FINALIZE,
 		    be_openssl_handshakeeventcb, bev_ssl);
-		if (fd >= 0) {
-			short events = bev->enabled;
-			if (events & EV_READ &&
-			    bufferevent_add_event_(&bev->ev_read, &bev->timeout_read) == -1)
-				return -1;
-			if (events & EV_WRITE &&
-			    bufferevent_add_event_(&bev->ev_write, &bev->timeout_write) == -1)
-				return -1;
-			return 0;
-		}
+		if (fd >= 0)
+			bufferevent_enable(bev, bev->enabled);
 		return 0;
 	}
 }
