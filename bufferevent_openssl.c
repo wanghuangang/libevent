@@ -1090,7 +1090,6 @@ set_handshake_callbacks(struct bufferevent_openssl *bev_ssl, evutil_socket_t fd)
 		return do_handshake(bev_ssl);
 	} else {
 		struct bufferevent *bev = &bev_ssl->bev.bev;
-		int r1=0, r2=0;
 
 		if (event_initialized(&bev->ev_read)) {
 			event_del(&bev->ev_read);
@@ -1104,10 +1103,16 @@ set_handshake_callbacks(struct bufferevent_openssl *bev_ssl, evutil_socket_t fd)
 		    EV_WRITE|EV_PERSIST|EV_FINALIZE,
 		    be_openssl_handshakeeventcb, bev_ssl);
 		if (fd >= 0) {
-			r1 = bufferevent_add_event_(&bev->ev_read, &bev->timeout_read);
-			r2 = bufferevent_add_event_(&bev->ev_write, &bev->timeout_write);
+			short events = bev->enabled;
+			if (events & EV_READ &&
+			    bufferevent_add_event_(&bev->ev_read, &bev->timeout_read) == -1)
+				return -1;
+			if (events & EV_WRITE &&
+			    bufferevent_add_event_(&bev->ev_write, &bev->timeout_write) == -1)
+				return -1;
+			return 0;
 		}
-		return (r1<0 || r2<0) ? -1 : 0;
+		return 0;
 	}
 }
 
