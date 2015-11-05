@@ -61,6 +61,7 @@
 
 #include "mm-internal.h"
 #include "bufferevent-internal.h"
+#include "event-internal.h"
 #include "log-internal.h"
 
 #include <openssl/bio.h>
@@ -416,6 +417,20 @@ start_writing(struct bufferevent_openssl *bev_ssl)
 }
 
 static void
+event_reset_fd(struct event *ev, struct timeval *tv)
+{
+	struct event_base *base = ev->ev_base;
+	event_callback_fn cb = ev->ev_callback;
+	void *arg = ev->ev_arg;
+	short flags = ev->ev_flags;
+
+	event_del(ev);
+	if (tv->tv_sec == 0 && tv->tv_usec == 0)
+		event_add(ev, tv);
+	event_assign(ev, base, -1, flags, cb, arg);
+}
+
+static void
 stop_reading(struct bufferevent_openssl *bev_ssl)
 {
 	if (bev_ssl->write_blocked_on_read)
@@ -425,7 +440,7 @@ stop_reading(struct bufferevent_openssl *bev_ssl)
 		    BEV_SUSPEND_FILT_READ);
 	} else {
 		struct bufferevent *bev = &bev_ssl->bev.bev;
-		event_del(&bev->ev_read);
+		event_reset_fd(&bev->ev_read, &bev->timeout_read);
 	}
 }
 
@@ -438,7 +453,7 @@ stop_writing(struct bufferevent_openssl *bev_ssl)
 		;
 	} else {
 		struct bufferevent *bev = &bev_ssl->bev.bev;
-		event_del(&bev->ev_write);
+		event_reset_fd(&bev->ev_write, &bev->timeout_write);
 	}
 }
 
