@@ -4219,7 +4219,7 @@ http_request_own_test(void *arg)
 #define HTTP(name) \
 	{ #name, http_##name##_test, TT_ISOLATED, &basic_setup, NULL }
 #define HTTPS(name) \
-	{ #name "_https", https_##name##_test, TT_ISOLATED, &basic_setup, NULL }
+	{ "https_" #name, https_##name##_test, TT_ISOLATED, &basic_setup, NULL }
 
 struct testcase_t http_testcases[] = {
 	{ "primitives", http_primitives, 0, NULL, NULL },
