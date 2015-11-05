@@ -3378,7 +3378,7 @@ static void
 http_make_web_server(evutil_socket_t fd, short what, void *arg)
 {
 	struct http_server *hs = (struct http_server *)arg;
-	http = http_setup(&hs->port, http_make_web_server_base, hs->ssl);
+	http = http_setup(&hs->port, http_make_web_server_base, hs->ssl ? HTTP_BIND_SSL : 0);
 }
 
 static void
