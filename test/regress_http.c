@@ -2824,26 +2824,33 @@ http_incomplete_writecb(struct bufferevent *bev, void *arg)
 }
 
 static void
-http_incomplete_test_(struct basic_test_data *data, int use_timeout)
+http_incomplete_test_(struct basic_test_data *data, int use_timeout, int ssl)
 {
 	struct bufferevent *bev;
 	evutil_socket_t fd;
 	const char *http_request;
 	ev_uint16_t port = 0;
 	struct timeval tv_start, tv_end;
+	int flags = BEV_OPT_DEFER_CALLBACKS;
 
 	exit_base = data->base;
 
 	test_ok = 0;
 
-	http = http_setup(&port, data->base, 0);
+	http = http_setup(&port, data->base, ssl ? HTTP_BIND_SSL : 0);
 	evhttp_set_timeout(http, 1);
 
 	fd = http_connect("127.0.0.1", port);
 	tt_int_op(fd, >=, 0);
 
 	/* Stupid thing to send a request */
-	bev = bufferevent_socket_new(data->base, fd, 0);
+	if (!ssl) {
+		bev = bufferevent_socket_new(data->base, fd, 0);
+	} else {
+		SSL *ssl = SSL_new(get_ssl_ctx());
+		bev = bufferevent_openssl_socket_new(
+			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
+	}
 	bufferevent_setcb(bev,
 	    http_incomplete_readcb, http_incomplete_writecb,
 	    http_incomplete_errorcb, use_timeout ? NULL : &fd);
@@ -2881,16 +2888,14 @@ http_incomplete_test_(struct basic_test_data *data, int use_timeout)
 	if (fd >= 0)
 		evutil_closesocket(fd);
 }
-static void
-http_incomplete_test(void *arg)
-{
-	http_incomplete_test_(arg, 0);
-}
-static void
-http_incomplete_timeout_test(void *arg)
-{
-	http_incomplete_test_(arg, 1);
-}
+static void http_incomplete_test(void *arg)
+{ http_incomplete_test_(arg, 0, 0); }
+static void http_incomplete_timeout_test(void *arg)
+{ http_incomplete_test_(arg, 1, 0); }
+static void https_incomplete_test(void *arg)
+{ http_incomplete_test_(arg, 0, 1); }
+static void https_incomplete_timeout_test(void *arg)
+{ http_incomplete_test_(arg, 1, 1); }
 
 /*
  * the server is going to reply with chunked data.
@@ -4281,6 +4286,8 @@ struct testcase_t http_testcases[] = {
 #ifdef EVENT__HAVE_OPENSSL
 	HTTPS(simple),
 	HTTPS(simple_dirty),
+	HTTPS(incomplete),
+	HTTPS(incomplete_timeout),
 	{ "https_connection_retry", https_connection_retry_test, TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
 	{ "https_connection_retry_conn_address", https_connection_retry_conn_address_test,
 	  TT_ISOLATED|TT_OFF_BY_DEFAULT, &basic_setup, NULL },
