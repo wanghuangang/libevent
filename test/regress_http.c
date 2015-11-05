@@ -3368,29 +3368,34 @@ http_connection_retry_done(struct evhttp_request *req, void *arg)
 	event_base_loopexit(arg,NULL);
 }
 
+struct http_server
+{
+	ev_uint16_t port;
+	int ssl;
+};
 static struct event_base *http_make_web_server_base=NULL;
 static void
 http_make_web_server(evutil_socket_t fd, short what, void *arg)
 {
-	ev_uint16_t port = *(ev_uint16_t*)arg;
-	http = http_setup(&port, http_make_web_server_base, 0);
+	struct http_server *hs = (struct http_server *)arg;
+	http = http_setup(&hs->port, http_make_web_server_base, hs->ssl);
 }
 
 static void
 http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base *dns_base, int ssl)
 {
 	struct basic_test_data *data = arg;
-	ev_uint16_t port = 0;
 	struct evhttp_connection *evcon = NULL;
 	struct evhttp_request *req = NULL;
 	struct timeval tv, tv_start, tv_end;
 	struct bufferevent *bev;
+	struct http_server hs = { .port = 0, .ssl = ssl, };
 
 	exit_base = data->base;
 	test_ok = 0;
 
 	/* auto detect a port */
-	http = http_setup(&port, data->base, ssl ? HTTP_BIND_SSL : 0);
+	http = http_setup(&hs.port, data->base, ssl ? HTTP_BIND_SSL : 0);
 	evhttp_free(http);
 	http = NULL;
 
@@ -3401,7 +3406,7 @@ http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base 
 		bev = bufferevent_openssl_socket_new(
 			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, 0);
 	}
-	evcon = evhttp_connection_base_bufferevent_new(data->base, dns_base, bev, addr, port);
+	evcon = evhttp_connection_base_bufferevent_new(data->base, dns_base, bev, addr, hs.port);
 	tt_assert(evcon);
 	if (dns_base)
 		tt_assert(!evhttp_connection_set_flags(evcon, EVHTTP_CON_REUSE_CONNECTED_ADDR));
@@ -3496,7 +3501,7 @@ http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base 
 	evutil_timerclear(&tv);
 	tv.tv_usec = 200000;
 	http_make_web_server_base = data->base;
-	event_base_once(data->base, -1, EV_TIMEOUT, http_make_web_server, &port, &tv);
+	event_base_once(data->base, -1, EV_TIMEOUT, http_make_web_server, &hs, &tv);
 
 	evutil_gettimeofday(&tv_start, NULL);
 	event_base_dispatch(data->base);
