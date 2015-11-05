@@ -3389,6 +3389,7 @@ http_simple_test_impl(void *arg, int ssl, int dirty)
 	struct evhttp_request *req = NULL;
 	struct bufferevent *bev;
 	struct http_server hs = { .port = 0, .ssl = ssl, };
+	int flags = BEV_OPT_DEFER_CALLBACKS;
 
 	exit_base = data->base;
 	test_ok = 0;
@@ -3396,12 +3397,11 @@ http_simple_test_impl(void *arg, int ssl, int dirty)
 	http = http_setup(&hs.port, data->base, ssl ? HTTP_BIND_SSL : 0);
 
 	if (!ssl) {
-		bev = bufferevent_socket_new(data->base, -1, 0);
+		bev = bufferevent_socket_new(data->base, -1, flags);
 	} else {
 		SSL *ssl = SSL_new(get_ssl_ctx());
 		bev = bufferevent_openssl_socket_new(
-			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
-			BEV_OPT_DEFER_CALLBACKS);
+			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
 		if (dirty)
 			bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
 	}
