@@ -435,6 +435,20 @@ http_complete_write(evutil_socket_t fd, short what, void *arg)
 	bufferevent_write(bev, http_request, strlen(http_request));
 }
 
+static struct bufferevent *
+create_bev(struct event_base *base, int fd, int ssl)
+{
+	int flags = BEV_OPT_DEFER_CALLBACKS;
+
+	if (!ssl) {
+		return bufferevent_socket_new(base, fd, flags);
+	} else {
+		SSL *ssl = SSL_new(get_ssl_ctx());
+		return bufferevent_openssl_socket_new(
+			base, fd, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
+	}
+}
+
 static void
 http_basic_test_impl(void *arg, int ssl)
 {
@@ -445,7 +459,6 @@ http_basic_test_impl(void *arg, int ssl)
 	const char *http_request;
 	ev_uint16_t port = 0, port2 = 0;
 	int server_flags = ssl ? HTTP_BIND_SSL : 0;
-	int flags = BEV_OPT_DEFER_CALLBACKS;
 
 	test_ok = 0;
 
@@ -460,13 +473,7 @@ http_basic_test_impl(void *arg, int ssl)
 	fd = http_connect("127.0.0.1", port);
 
 	/* Stupid thing to send a request */
-	if (!ssl) {
-		bev = bufferevent_socket_new(data->base, fd, flags);
-	} else {
-		SSL *ssl = SSL_new(get_ssl_ctx());
-		bev = bufferevent_openssl_socket_new(
-			data->base, fd, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
-	}
+	bev = create_bev(data->base, fd, ssl);
 	bufferevent_setcb(bev, http_readcb, http_writecb,
 	    http_errorcb, data->base);
 
@@ -2847,7 +2854,6 @@ http_incomplete_test_(struct basic_test_data *data, int use_timeout, int ssl)
 	const char *http_request;
 	ev_uint16_t port = 0;
 	struct timeval tv_start, tv_end;
-	int flags = BEV_OPT_DEFER_CALLBACKS;
 
 	exit_base = data->base;
 
@@ -2860,13 +2866,7 @@ http_incomplete_test_(struct basic_test_data *data, int use_timeout, int ssl)
 	tt_int_op(fd, >=, 0);
 
 	/* Stupid thing to send a request */
-	if (!ssl) {
-		bev = bufferevent_socket_new(data->base, fd, 0);
-	} else {
-		SSL *ssl = SSL_new(get_ssl_ctx());
-		bev = bufferevent_openssl_socket_new(
-			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
-	}
+	bev = create_bev(data->base, fd, ssl);
 	bufferevent_setcb(bev,
 	    http_incomplete_readcb, http_incomplete_writecb,
 	    http_incomplete_errorcb, use_timeout ? NULL : &fd);
@@ -3410,22 +3410,13 @@ http_simple_test_impl(void *arg, int ssl, int dirty)
 	struct evhttp_request *req = NULL;
 	struct bufferevent *bev;
 	struct http_server hs = { .port = 0, .ssl = ssl, };
-	int flags = BEV_OPT_DEFER_CALLBACKS;
 
 	exit_base = data->base;
 	test_ok = 0;
 
 	http = http_setup(&hs.port, data->base, ssl ? HTTP_BIND_SSL : 0);
 
-	if (!ssl) {
-		bev = bufferevent_socket_new(data->base, -1, flags);
-	} else {
-		SSL *ssl = SSL_new(get_ssl_ctx());
-		bev = bufferevent_openssl_socket_new(
-			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
-		if (dirty)
-			bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
-	}
+	bev = create_bev(data->base, -1, ssl);
 	evcon = evhttp_connection_base_bufferevent_new(
 		data->base, NULL, bev, "127.0.0.1", hs.port);
 	tt_assert(evcon);
@@ -3481,15 +3472,7 @@ http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base 
 	evhttp_free(http);
 	http = NULL;
 
-	if (!ssl) {
-		bev = bufferevent_socket_new(data->base, -1, 0);
-	} else {
-		SSL *ssl = SSL_new(get_ssl_ctx());
-		bev = bufferevent_openssl_socket_new(
-			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
-			BEV_OPT_DEFER_CALLBACKS);
-		// bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
-	}
+	bev = create_bev(data->base, -1, ssl);
 	evcon = evhttp_connection_base_bufferevent_new(data->base, dns_base, bev, addr, hs.port);
 	tt_assert(evcon);
 	if (dns_base)
