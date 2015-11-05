@@ -1156,9 +1156,6 @@ be_openssl_enable(struct bufferevent *bev, short events)
 	struct bufferevent_openssl *bev_ssl = upcast(bev);
 	int r1 = 0, r2 = 0;
 
-	if (bev_ssl->state != BUFFEREVENT_SSL_OPEN)
-		return 0;
-
 	if (events & EV_READ)
 		r1 = start_reading(bev_ssl);
 	if (events & EV_WRITE)
