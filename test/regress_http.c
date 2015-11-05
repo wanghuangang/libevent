@@ -3405,6 +3405,7 @@ http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base 
 		SSL *ssl = SSL_new(get_ssl_ctx());
 		bev = bufferevent_openssl_socket_new(
 			data->base, -1, ssl, BUFFEREVENT_SSL_CONNECTING, 0);
+		// bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
 	}
 	evcon = evhttp_connection_base_bufferevent_new(data->base, dns_base, bev, addr, hs.port);
 	tt_assert(evcon);
