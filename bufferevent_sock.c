@@ -503,7 +503,6 @@ bufferevent_socket_connect_hostname(struct bufferevent *bev,
 
 	BEV_LOCK(bev);
 	bev_p->dns_error = 0;
-	BEV_UNLOCK(bev);
 
 	evutil_snprintf(portbuf, sizeof(portbuf), "%d", port);
 
@@ -518,6 +517,7 @@ bufferevent_socket_connect_hostname(struct bufferevent *bev,
 	bufferevent_incref_(bev);
 	err = evutil_getaddrinfo_async_(evdns_base, hostname, portbuf,
 	    &hint, bufferevent_connect_getaddrinfo_cb, bev);
+	BEV_UNLOCK(bev);
 
 	if (err == 0) {
 		return 0;
