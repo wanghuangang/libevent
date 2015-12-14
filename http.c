@@ -304,8 +304,8 @@ static const char *
 evhttp_method(struct evhttp_connection *evcon,
               enum evhttp_cmd_type type, ev_uint16_t *flags)
 {
-	const char *method;
-	const struct evhttp_extended_method * ext_methods;
+	struct evhttp_extended_method ext_method;
+	const char *method    = NULL;
 	ev_uint16_t tmp_flags = 0;
 
 	switch (type) {
@@ -340,21 +340,22 @@ evhttp_method(struct evhttp_connection *evcon,
 		tmp_flags = EVHTTP_METHOD_HAS_BODY;
 		break;
 	default:
-		method = NULL;
-		ext_methods = evcon->ext_methods;
-		if (ext_methods == NULL && evcon->http_server != NULL)
-			ext_methods = evcon->http_server->ext_methods;
-		if (ext_methods != NULL) {
-			for (; ext_methods->method != NULL; ext_methods++) {
-				if (type == ext_methods->type) {
-					method = ext_methods->method;
-					tmp_flags = ext_methods->flags;
-					break;
-				}
-			}
+		/* setup the structure to allow for the cmp function to set any of
+		 * the fields.
+		 * NOTE: only the sting "type" will be used for this case
+		 */
+		ext_method.method = NULL;
+		ext_method.type   = type;
+		ext_method.flags  = tmp_flags;
+
+		if (evcon->ext_method_cmp &&
+			evcon->ext_method_cmp(&ext_method) == 0) {
+		    method = ext_method.method;
 		}
+
 		break;
 	}
+
 	event_debug(("%s: type=%04x => '%s' flags=%04x",
 	             __func__, (int)type, method, tmp_flags));
 
@@ -1752,18 +1753,15 @@ evhttp_parse_request_line(struct evhttp_request *req, char *line)
 	} /* switch */
 
 	if ((int)type == EVHTTP_REQ_UNKNOWN_) {
-		/* check extended methods */
-		const struct evhttp_extended_method * ext_methods = req->evcon->ext_methods;
-		if (ext_methods == NULL && req->evcon->http_server != NULL)
-			ext_methods = req->evcon->http_server->ext_methods;
-		if (ext_methods != NULL) {
-			for (; ext_methods->method != NULL; ext_methods++) {
-				if (method_len == strlen(ext_methods->method) &&
-				    0 == memcmp(method, ext_methods->method, method_len)) {
-					type = ext_methods->type;
-					break;
-				}
-			}
+		/* check extended methods, we only care about the 
+		 * type set by the cmp function if the cmp function
+		 * returns a 0 value.
+		 */
+		struct evhttp_extended_method ext_method;
+
+		if (req->evcon->ext_method_cmp &&
+			    req->evcon->ext_method_cmp(&ext_method) == 0) {
+		    type = ext_method.type;
 		}
 	}
 
@@ -2384,10 +2382,10 @@ int evhttp_connection_set_flags(struct evhttp_connection *evcon,
 	return 0;
 }
 
-void evhttp_connection_set_extended_methods(struct evhttp_connection *evcon,
-	const struct evhttp_extended_method *ext_methods)
-{
-	evcon->ext_methods = ext_methods;
+void
+evhttp_connection_set_extended_method_cmp(struct evhttp_connection *evcon,
+	int (*cmp)(struct evhttp_extended_method *)) {
+	evcon->ext_method_cmp = cmp;
 }
 
 void
@@ -3757,10 +3755,9 @@ evhttp_set_allowed_methods(struct evhttp* http, ev_uint16_t methods)
 }
 
 void
-evhttp_set_extended_methods(struct evhttp* http,
-    const struct evhttp_extended_method *ext_methods)
-{
-	http->ext_methods = ext_methods;
+evhttp_set_extended_method_cmp(struct evhttp* http,
+    int (*cmp)(struct evhttp_extended_method *)) {
+	http->ext_method_cmp = cmp;
 }
 
 int

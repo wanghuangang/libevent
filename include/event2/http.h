@@ -255,8 +255,8 @@ void evhttp_set_allowed_methods(struct evhttp* http, ev_uint16_t methods);
   @param ext_methods method list
 */
 EVENT2_EXPORT_SYMBOL
-void evhttp_set_extended_methods(struct evhttp* http,
-    const struct evhttp_extended_method *ext_methods);
+void evhttp_set_extended_method_cmp(struct evhttp* http,
+	int (*cmp)(struct evhttp_extended_method *));
 
 /**
    Set a callback for a specified URI
@@ -503,7 +503,7 @@ enum evhttp_cmd_type {
 /** structure to allow users to define their own HTTP methods
  * @see evhttp_set_extended_methods */
 struct evhttp_extended_method {
-	const char * method;
+	char * method;
 	ev_uint16_t type;
 	ev_uint16_t flags;	/* Available flag : EVHTTP_METHOD_HAS_BODY */
 };
@@ -685,13 +685,13 @@ EVENT2_EXPORT_SYMBOL
 int evhttp_request_is_owned(struct evhttp_request *req);
 
 /**
- * Sets extended method list
+ * Sets extended method cmp callback 
  *
- * @see evhttp_set_extended_methods
+ * @see evhttp_set_extended_method
  */
 EVENT2_EXPORT_SYMBOL
-void evhttp_connection_set_extended_methods(struct evhttp_connection *evcon,
-	const struct evhttp_extended_method *ext_methods);
+void evhttp_connection_set_extended_method_cmp(struct evhttp_connection *evcon,
+	int (*cmp)(struct evhttp_extended_method *));
 
 /**
  * Returns the connection object associated with the request or NULL
