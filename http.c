@@ -350,7 +350,8 @@ evhttp_method(struct evhttp_connection *evcon,
 
 		if (evcon->ext_method_cmp &&
 			evcon->ext_method_cmp(&ext_method) == 0) {
-		    method = ext_method.method;
+		    method     = ext_method.method;
+		    tmp_flags |= ext_method.flags;
 		}
 
 		break;
