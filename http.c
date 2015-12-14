@@ -1759,6 +1759,8 @@ evhttp_parse_request_line(struct evhttp_request *req, char *line)
 		 */
 		struct evhttp_extended_method ext_method;
 
+		ext_method.method = method;
+
 		if (req->evcon->ext_method_cmp &&
 			    req->evcon->ext_method_cmp(&ext_method) == 0) {
 		    type = ext_method.type;
