@@ -428,7 +428,7 @@ CHECK_TYPE_SIZE("SSIZE_T" EVENT__SIZEOF_SSIZE_T_UPPER LANGUAGE C)
 
 if (DEFINED EVENT__SIZEOF_SSIZE_T_LOWER)
     set(EVENT__ssize_t "ssize_t")
-else if (DEFINED EVENT__SIZEOF_SSIZE_T_UPPER)
+elseif (DEFINED EVENT__SIZEOF_SSIZE_T_UPPER)
     set(EVENT__ssize_t "SSIZE_T")
 else()
     set(EVENT__ssize_t "int")
