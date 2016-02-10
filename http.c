@@ -431,14 +431,26 @@ evhttp_make_header_request(struct evhttp_connection *evcon,
     struct evhttp_request *req)
 {
 	const char *method;
+	struct evbuffer *buf, *out_buf;
 
 	evhttp_remove_header(req->output_headers, "Proxy-Connection");
 
 	/* Generate request line */
 	method = evhttp_method(req->type);
-	evbuffer_add_printf(bufferevent_get_output(evcon->bufev),
-	    "%s %s HTTP/%d.%d\r\n",
+
+	buf = evbuffer_new();
+	if (buf == NULL) {
+		evhttp_connection_free(evcon);
+		return;
+	}
+	out_buf = bufferevent_get_output(evcon->bufev);
+
+	evbuffer_add_printf(buf, "%s %s HTTP/%d.%d\r\n",
 	    method, req->uri, req->major, req->minor);
+	evbuffer_unfreeze(out_buf, 1);
+	evbuffer_prepend_buffer(out_buf, buf);
+	evbuffer_freeze(out_buf, 1);
+	evbuffer_free(buf);
 
 	/* Add the content length on a post or put request if missing */
 	if ((req->type == EVHTTP_REQ_POST || req->type == EVHTTP_REQ_PUT) &&
