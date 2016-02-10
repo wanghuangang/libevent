@@ -1373,6 +1373,31 @@ evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 	}
 }
 
+/* Try to read error, since server may already send and close
+ * connection, but if at that time we have some data to send then we
+ * can send get EPIPE and fail, while we can read that HTTP error. */
+static void
+evhttp_connection_read_on_write_error(struct evhttp_connection *evcon,
+    struct evhttp_request *req)
+{
+	struct evbuffer *buf;
+
+	evcon->state = EVCON_READING_FIRSTLINE;
+	req->kind = EVHTTP_RESPONSE;
+
+	buf = bufferevent_get_output(evcon->bufev);
+	evbuffer_unfreeze(buf, 1);
+	evbuffer_drain(buf, evbuffer_get_length(buf));
+	evbuffer_freeze(buf, 1);
+
+	bufferevent_setcb(evcon->bufev,
+		evhttp_read_cb,
+		NULL, /* evhttp_write_cb */
+		evhttp_error_cb,
+		evcon);
+	evhttp_connection_start_detectclose(evcon);
+}
+
 static void
 evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 {
@@ -1442,6 +1467,11 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 	if (what & BEV_EVENT_TIMEOUT) {
 		evhttp_connection_fail_(evcon, EVREQ_HTTP_TIMEOUT);
 	} else if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+		if (what & BEV_EVENT_WRITING) {
+			evhttp_connection_read_on_write_error(evcon, req);
+			return;
+		}
+
 		evhttp_connection_fail_(evcon, EVREQ_HTTP_EOF);
 	} else if (what == BEV_EVENT_CONNECTED) {
 	} else {
