@@ -1446,8 +1446,15 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 		 * connection, but if at that time we have some data to send then we
 		 * can send get EPIPE and fail, while we can read that HTTP error. */
 		if (what & BEV_EVENT_WRITING) {
+			struct evbuffer *buf;
+
 			evcon->state = EVCON_READING_FIRSTLINE;
 			req->kind = EVHTTP_RESPONSE;
+
+			buf = bufferevent_get_output(evcon->bufev);
+			evbuffer_unfreeze(buf, 1);
+			evbuffer_drain(buf, evbuffer_get_length(buf));
+			evbuffer_freeze(buf, 1);
 
 			bufferevent_setcb(evcon->bufev,
 				evhttp_read_cb,
