@@ -1442,6 +1442,22 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 	if (what & BEV_EVENT_TIMEOUT) {
 		evhttp_connection_fail_(evcon, EVREQ_HTTP_TIMEOUT);
 	} else if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+		/* Try to read error, since server may already send and close
+		 * connection, but if at that time we have some data to send then we
+		 * can send get EPIPE and fail, while we can read that HTTP error. */
+		if (what & BEV_EVENT_WRITING) {
+			evcon->state = EVCON_READING_FIRSTLINE;
+			req->kind = EVHTTP_RESPONSE;
+
+			bufferevent_setcb(evcon->bufev,
+				evhttp_read_cb,
+				NULL, /* evhttp_write_cb */
+				evhttp_error_cb,
+				evcon);
+			evhttp_connection_start_detectclose(evcon);
+			return;
+		}
+
 		evhttp_connection_fail_(evcon, EVREQ_HTTP_EOF);
 	} else if (what == BEV_EVENT_CONNECTED) {
 	} else {
