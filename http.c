@@ -192,6 +192,7 @@ static void evhttp_get_request(struct evhttp *, evutil_socket_t, struct sockaddr
 static void evhttp_write_buffer(struct evhttp_connection *,
     void (*)(struct evhttp_connection *, void *), void *);
 static void evhttp_make_header(struct evhttp_connection *, struct evhttp_request *);
+static inline void evhttp_request_free_auto(struct evhttp_request *);
 
 /* callbacks for bufferevent */
 static void evhttp_read_cb(struct bufferevent *, void *);
@@ -428,7 +429,7 @@ evhttp_connected(struct evhttp_connection *evcon)
  */
 static void
 evhttp_make_header_request(struct evhttp_connection *evcon,
-    struct evhttp_request *req)
+    struct evhttp_request *req, struct evbuffer *buf)
 {
 	const char *method;
 
@@ -436,7 +437,7 @@ evhttp_make_header_request(struct evhttp_connection *evcon,
 
 	/* Generate request line */
 	method = evhttp_method(req->type);
-	evbuffer_add_printf(bufferevent_get_output(evcon->bufev),
+	evbuffer_add_printf(buf,
 	    "%s %s HTTP/%d.%d\r\n",
 	    method, req->uri, req->major, req->minor);
 
@@ -527,10 +528,10 @@ evhttp_maybe_add_content_length_header(struct evkeyvalq *headers,
  */
 static void
 evhttp_make_header_response(struct evhttp_connection *evcon,
-    struct evhttp_request *req)
+    struct evhttp_request *req, struct evbuffer *buf)
 {
 	int is_keepalive = evhttp_is_connection_keepalive(req->input_headers);
-	evbuffer_add_printf(bufferevent_get_output(evcon->bufev),
+	evbuffer_add_printf(buf,
 	    "HTTP/%d.%d %d %s\r\n",
 	    req->major, req->minor, req->response_code,
 	    req->response_code_line);
@@ -588,16 +589,25 @@ evhttp_make_header(struct evhttp_connection *evcon, struct evhttp_request *req)
 {
 	struct evkeyval *header;
 	struct evbuffer *output = bufferevent_get_output(evcon->bufev);
+	struct evbuffer *buf = evbuffer_new();
+
+	if (!buf) {
+		evhttp_request_free_auto(req);
+		return;
+	}
 
 	/*
 	 * Depending if this is a HTTP request or response, we might need to
 	 * add some new headers or remove existing headers.
 	 */
 	if (req->kind == EVHTTP_REQUEST) {
-		evhttp_make_header_request(evcon, req);
+		evhttp_make_header_request(evcon, req, buf);
 	} else {
-		evhttp_make_header_response(evcon, req);
+		evhttp_make_header_response(evcon, req, buf);
 	}
+
+	evbuffer_add_buffer(output, buf);
+	evbuffer_free(buf);
 
 	TAILQ_FOREACH(header, req->output_headers, next) {
 		evbuffer_add_printf(output, "%s: %s\r\n",
