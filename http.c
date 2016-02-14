@@ -1038,9 +1038,18 @@ evhttp_read_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 		(size_t)req->ntoread > req->evcon->max_body_size)) {
 		/* XXX: The above casted comparison must checked for overflow */
 		/* failed body length test */
-		event_debug(("Request body is too long"));
-		evhttp_connection_fail_(evcon,
-				       EVREQ_HTTP_DATA_TOO_LONG);
+		size_t n = evbuffer_get_length(buf);
+		if (n > (size_t) req->ntoread)
+			n = (size_t) req->ntoread;
+		req->ntoread -= n;
+		req->body_size += n;
+
+		event_debug(("Request body is too long, left " EV_SIZE_FMT,
+			EV_SIZE_ARG(req->ntoread)));
+
+		evbuffer_drain(buf, n);
+		if (!req->ntoread)
+			evhttp_connection_fail_(evcon, EVREQ_HTTP_DATA_TOO_LONG);
 		return;
 	}
 
@@ -1056,7 +1065,7 @@ evhttp_read_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 		}
 	}
 
-	if (req->ntoread == 0) {
+	if (!req->ntoread) {
 		bufferevent_disable(evcon->bufev, EV_READ);
 		/* Completed content length */
 		evhttp_connection_done(evcon);
