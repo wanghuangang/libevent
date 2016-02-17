@@ -71,7 +71,14 @@ function uncrustify_git()
 }
 ```
 
+- Or you can check patches with `clang-format-diff`:
+```
+ln -s /path/to/clang-format-config .clang-format
+git show origin/master | sed -e 's#^--- a/#--- #' -e 's#^+++ b/#+++ #' | clang-format-diff-3.8
+```
+
 - [uncrustify config](https://strcpy.net/mark/libevent-uncrustify.cfg)
+- [clang-format config](https://gist.github.com/azat/ea7aa1d55359b1b4917e/raw)
 
 ## Testing
 - Write new unit test in `test/regress_{MORE_SUITABLE_FOR_YOU}.c`
