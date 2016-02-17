@@ -72,7 +72,7 @@ function uncrustify_git()
 ```
 
 - Or you can check patches with `clang-format-diff`:
-```
+```bash
 ln -s /path/to/clang-format-config .clang-format
 git show origin/master | sed -e 's#^--- a/#--- #' -e 's#^+++ b/#+++ #' | clang-format-diff-3.8
 ```
