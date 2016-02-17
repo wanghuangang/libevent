@@ -74,11 +74,13 @@ function uncrustify_git()
 - Or you can check patches with `clang-format-diff`:
 ```bash
 ln -s /path/to/clang-format-config .clang-format
-git show origin/master | clang-format-diff-3.8 -p1
+git show origin/master | clang-format-diff -p1
 ```
 
 - [uncrustify config](https://strcpy.net/mark/libevent-uncrustify.cfg)
 - [clang-format config](https://gist.github.com/azat/ea7aa1d55359b1b4917e/raw)
+
+*clang-format config tested with 3.8*
 
 ## Testing
 - Write new unit test in `test/regress_{MORE_SUITABLE_FOR_YOU}.c`
