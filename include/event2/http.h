@@ -654,7 +654,9 @@ void evhttp_connection_set_family(struct evhttp_connection *evcon,
 #define EVHTTP_CON_REUSE_CONNECTED_ADDR	0x0008
 /* Try to read error, since server may already send and close
  * connection, but if at that time we have some data to send then we
- * can send get EPIPE and fail, while we can read that HTTP error. */
+ * can send get EPIPE and fail, while we can read that HTTP error.
+ *
+ * @deprecated */
 #define EVHTTP_CON_READ_ON_WRITE_ERROR	0x0010
 /* @see EVHTTP_SERVER_LINGERING_CLOSE */
 #define EVHTTP_CON_LINGERING_CLOSE	0x0020
