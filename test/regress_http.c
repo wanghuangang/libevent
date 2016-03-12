@@ -1301,13 +1301,28 @@ http_do_cancel(evutil_socket_t fd, short what, void *arg)
 }
 
 static void
-http_cancel_test(void *arg)
+http_cancel_test_impl(void *arg, int dns, int timeout)
 {
 	struct basic_test_data *data = arg;
 	ev_uint16_t port = 0;
 	struct evhttp_connection *evcon = NULL;
 	struct evhttp_request *req = NULL;
 	struct timeval tv;
+	struct evdns_base *dns_base = NULL;
+	ev_uint16_t portnum = 0;
+	char address[64];
+	struct evhttp *inactive_http = NULL;
+	struct event_base *inactive_base = NULL;
+
+	tt_assert(regress_dnsserver(data->base, &portnum, search_table));
+
+	dns_base = evdns_base_new(data->base, 0/* init name servers */);
+	tt_assert(dns_base);
+
+	/** TODO: Hack the port to make timeout after resolving */
+	if (dns) ++portnum;
+	evutil_snprintf(address, sizeof(address), "127.0.0.1:%d", portnum);
+	evdns_base_nameserver_ip_add(dns_base, address);
 
 	exit_base = data->base;
 
@@ -1315,7 +1330,14 @@ http_cancel_test(void *arg)
 
 	http = http_setup(&port, data->base, 0);
 
-	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
+	if (timeout) {
+		port = 0;
+		inactive_base = event_base_new();
+		inactive_http = http_setup(&port, inactive_base, 0);
+	}
+	evcon = evhttp_connection_base_new(data->base, dns_base, "localhost", port);
+	if (timeout)
+		evhttp_connection_set_timeout(evcon, 5);
 	tt_assert(evcon);
 
 	/*
@@ -1341,7 +1363,10 @@ http_cancel_test(void *arg)
 
 	event_base_dispatch(data->base);
 
-	tt_int_op(test_ok, ==, 3);
+	if (dns || timeout)
+		tt_int_op(test_ok, ==, 2); /** no servers responses */
+	else
+		tt_int_op(test_ok, ==, 3);
 
 	/* try to make another request over the same connection */
 	test_ok = 0;
@@ -1376,7 +1401,22 @@ http_cancel_test(void *arg)
 		evhttp_connection_free(evcon);
 	if (http)
 		evhttp_free(http);
+	if (dns_base)
+		evdns_base_free(dns_base, 0);
+	regress_clean_dnsserver();
+	if (inactive_base)
+		event_base_free(inactive_base);
+	if (inactive_http)
+		evhttp_free(inactive_http);
 }
+static void http_cancel_test(void *arg)
+{ http_cancel_test_impl(arg, 0, 0); }
+static void http_cancel_resolving_test(void *arg)
+{ http_cancel_test_impl(arg, 1, 0); }
+static void http_cancel_timeout_test(void *arg)
+{ http_cancel_test_impl(arg, 0, 1); }
+static void http_cancel_resolving_timeout_test(void *arg)
+{ http_cancel_test_impl(arg, 1, 1); }
 
 static void
 http_request_no_action_done(struct evhttp_request *req, void *arg)
@@ -4389,6 +4429,9 @@ struct testcase_t http_testcases[] = {
 	HTTP(basic),
 	HTTP(simple),
 	HTTP(cancel),
+	HTTP(cancel_resolving),
+	HTTP(cancel_timeout),
+	HTTP(cancel_resolving_timeout),
 	HTTP(virtual_host),
 	HTTP(post),
 	HTTP(put),
