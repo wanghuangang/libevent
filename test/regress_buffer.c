@@ -1678,6 +1678,39 @@ end:
 }
 
 static void
+test_evbuffer_add_printf(void *ptr)
+{
+	struct evbuffer *buf = evbuffer_new();
+
+	evbuffer_add(buf, "first", 5);
+	evbuffer_add(buf, "second", 6);
+	evbuffer_add_printf(buf, "%s", "last");
+	tt_int_op(memcmp(evbuffer_pullup(buf, -1), "firstsecondlast", 15), ==, 0);
+	evbuffer_drain(buf, -1);
+
+end:
+	if (buf)
+		evbuffer_free(buf);
+}
+static void
+test_evbuffer_expand_add_printf(void *ptr)
+{
+	struct evbuffer *buf = evbuffer_new();
+
+	/** evbuffer_expand() + evbuffer_add() + evbuffer_add_printf() */
+	evbuffer_add(buf, "first", 5);
+	evbuffer_expand(buf, 2048);
+	evbuffer_add(buf, "second", 6);
+	evbuffer_add_printf(buf, "%s", "last");
+	tt_int_op(memcmp(evbuffer_pullup(buf, -1), "firstsecondlast", 15), ==, 0);
+
+end:
+	if (buf)
+		evbuffer_free(buf);
+}
+
+
+static void
 test_evbuffer_multicast(void *ptr)
 {
 	const char chunk1[] = "If you have found the answer to such a problem";
@@ -2242,6 +2275,8 @@ struct testcase_t evbuffer_testcases[] = {
 	{ "search", test_evbuffer_search, 0, NULL, NULL },
 	{ "callbacks", test_evbuffer_callbacks, 0, NULL, NULL },
 	{ "add_reference", test_evbuffer_add_reference, 0, NULL, NULL },
+	{ "add_printf", test_evbuffer_add_printf, 0, NULL, NULL },
+	{ "expand_add_printf", test_evbuffer_expand_add_printf, 0, NULL, NULL },
 	{ "multicast", test_evbuffer_multicast, 0, NULL, NULL },
 	{ "multicast_drain", test_evbuffer_multicast_drain, 0, NULL, NULL },
 	{ "prepend", test_evbuffer_prepend, TT_FORK, NULL, NULL },
