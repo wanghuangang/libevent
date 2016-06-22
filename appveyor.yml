@@ -43,17 +43,18 @@ install:
   - appveyor DownloadFile https://strcpy.net/packages/Win32OpenSSL-1_0_2a.exe
   - Win32OpenSSL-1_0_2a.exe /silent /verysilent /sp- /suppressmsgboxes
 build_script:
-  - cmd: 'echo "C:\MinGW   /mingw" >%CYG_ROOT%/etc/fstab'
-  - ps: if ($env:EVENT_BUILD_METHOD -eq 'autotools') {
-          $env:PATH="$($env:PATH);$env:CYG_ROOT\bin;C:\MinGW\bin";
-          mingw-get install autotools autoconf automake;
-          & $env:CYG_ROOT\bin\bash -lc "cd $env:APPVEYOR_BUILD_FOLDER; exec 0</dev/null; mount C:/MinGW /mingw; export M4=\\$(which m4); bash -x ./autogen.sh; ./configure $env:EVENT_CONFIGURE_OPTIONS; make; make verify";
-        } else {
-          md build;
-          cd build;
-          cmake .. $env:EVENT_CMAKE_OPTIONS;
-          cmake --build .;
-          ctest --output-on-failure;
-        }
+  - cmd: >-
+      if "%EVENT_BUILD_METHOD%" == "autotools" (
+        echo "C:\MinGW   /mingw" >%CYG_ROOT%/etc/fstab
+        set PATH=%PATH%;C:\MinGW\msys\1.0\bin;C:\MinGW\bin
+        C:\MinGW\bin\mingw-get install autotools autoconf automake python
+        %CYG_ROOT%/bin/bash -lc "cd $APPVEYOR_BUILD_FOLDER; exec 0</dev/null;mount C:/MinGW /mingw; bash -x ./autogen.sh; ./configure $EVENT_BUILD_METHOD; make; make verify"
+      ) else (
+        md build
+        cd build
+        cmake .. $env:EVENT_CMAKE_OPTIONS
+        cmake --build .
+        ctest --output-on-failure
+      )
 cache:
   - C:\OpenSSL-Win32
