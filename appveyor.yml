@@ -33,6 +33,7 @@ environment:
     - EVENT_BUILD_METHOD: "cmake"
       EVENT_CMAKE_OPTIONS: "-DEVENT__ENABLE_VERBOSE_DEBUG=ON"
 init:
+  - git config --global core.autocrlf true
   - 'echo Building libevent %version% for Windows'
   - 'echo System architecture: %PLATFORM%'
   - 'echo Repo build branch is: %APPVEYOR_REPO_BRANCH%'
