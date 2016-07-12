@@ -1,6 +1,7 @@
 os:
   - linux
   - osx
+osx_image: xcode8
 env:
   matrix:
     - EVENT_BUILD_METHOD=cmake EVENT_CMAKE_OPTIONS=""
