@@ -72,3 +72,4 @@ Makefile.in
 /test/test-time
 /test/test-weof
 
+/compile
