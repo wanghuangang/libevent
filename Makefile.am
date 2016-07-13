@@ -52,6 +52,7 @@ VERSION_INFO = 4:1:2
 #    1.4.14a-stable:                : 3:3:2   [see note 2]
 #    1.4.14b-stable:                : 4:0:2   (compatible ABI change)
 #    1.4.15-stable:                 : 4:1:2   (no ABI change)
+#    1.4.16-stable:                 : 4:1:2   (no ABI change)
 #
 # [1]: Using the same VERSION_INFO value was wrong; we should have been
 #      updating the Revision field.

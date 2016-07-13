@@ -203,7 +203,7 @@
 #define TIME_WITH_SYS_TIME 1
 
 /* Version number of package */
-#define VERSION "1.4.15-stable"
+#define VERSION "1.4.16-stable"
 
 /* Define to appropriate substitue if compiler doesnt have __func__ */
 #if defined(_MSC_VER) && _MSC_VER < 1300
