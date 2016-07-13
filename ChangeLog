@@ -1,3 +1,15 @@
+Changes in 1.4.15b-stable (13 July 2016)
+
+ Libevent 1.4.15b-stable have one major fix to allow kqueue() on 10.12 OSX.
+
+ o Ignore generated stuff (4cab1a5 Azat Khuzhin)
+ o Check for Mac OS X 10.4 kqueue bug properly [1.4 backport] (0c1519e Mark Mentovai)
+ o fix a signed/unsigned warning in kqueue.c (70a64b5 Nick Mathewson)
+ o evhttp: fix leak from keep-alive disconnect or read/write timeout (46a1375 Pierce Lopez)
+ o Revert "Defensive programming to prevent (hopefully impossible) stack-stomping" (2216a9b Nick Mathewson)
+ o Remove a needless declaration (6067b1d Nick Mathewson)
+
+
 Changes in 1.4.15-stable (5 January 2015)
 
  o Avoid integer overflow bugs in evbuffer_add() and related functions.  See CVE-2014-6272 advisory for more information. (d49bc0e88b81a5812116074dc007f1db0ca1eecd)
