@@ -65,6 +65,7 @@ VERSION_INFO = 5:0:0
 #  2.1.3-alpha --     2.1        3:0:0 (ABI changed slightly)
 #  2.1.4-alpha --     2.1        4:0:0 (ABI changed slightly)
 #  2.1.5-beta  --     2.1        5:0:0 (ABI changed slightly)
+#  2.1.6-beta  --     2.1        6:0:0 (ABI changed slightly)
 
 # ABI version history for this package effectively restarts every time
 # we change RELEASE.  Version 1.4.x had RELEASE of 1.4.
