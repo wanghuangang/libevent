@@ -2795,6 +2795,7 @@ end:
 	}
 }
 
+#ifndef _WIN32
 static void
 dfd_cb(evutil_socket_t fd, short e, void *data)
 {
@@ -2802,14 +2803,46 @@ dfd_cb(evutil_socket_t fd, short e, void *data)
 }
 
 static void
-test_event_closed_fd(void *arg)
+event_disable_all_methods()
+{
+	setenv("EVENT_NOEPOLL", "1", 1);
+	setenv("EVENT_NOPOLL", "1", 1);
+	setenv("EVENT_NODEVPOLL", "1", 1);
+	setenv("EVENT_NOSELECT", "1", 1);
+	setenv("EVENT_NOKQUEUE", "1", 1);
+	setenv("EVENT_NOWIN32", "1", 1);
+	setenv("EVENT_NOEVPORT", "1", 1);
+}
+static void
+event_enable_method(const char *name)
+{
+	char environment[64];
+	int i;
+
+	evutil_snprintf(environment, sizeof(environment), "EVENT_NO%s", name);
+	for (i = 8; environment[i] != '\0'; ++i)
+		environment[i] = EVUTIL_TOUPPER_(environment[i]);
+
+	event_disable_all_methods();
+	/** TODO: win32 support */
+	unsetenv(environment);
+}
+
+static void
+test_event_closed_fd_poll(void *arg)
 {
 	struct timeval tv;
 	struct event *e;
 	struct basic_test_data *data = (struct basic_test_data *)arg;
-	int i = 0;
+	struct event_base *base;
+	int i = 0, ret;
 
-	e = event_new(data->base, data->pair[0], EV_READ, dfd_cb, &i);
+	event_enable_method("poll");
+
+	base = event_base_new();
+	tt_assert(base);
+
+	e = event_new(base, data->pair[0], EV_READ, dfd_cb, &i);
 	tt_assert(e);
 
 	tv.tv_sec = 0;
@@ -2817,15 +2850,80 @@ test_event_closed_fd(void *arg)
 	event_add(e, &tv);
 	tt_assert(event_pending(e, EV_READ, NULL));
 	close(data->pair[0]);
-	event_base_loop(data->base, EVLOOP_ONCE);
+	ret = event_base_loop(base, EVLOOP_ONCE);
 	tt_int_op(i, ==, EV_READ);
+	tt_int_op(ret, ==, 0);
 
 end:
 	if (e)
 		event_free(e);
+	if (base)
+		event_base_free(base);
 }
 
-#ifndef _WIN32
+static void
+test_event_closed_fd_select(void *arg)
+{
+	struct event *e;
+	struct basic_test_data *data = (struct basic_test_data *)arg;
+	struct event_base *base;
+	int i = 0, ret;
+
+	event_enable_method("select");
+
+	base = event_base_new();
+	tt_assert(base);
+
+	e = event_new(base, data->pair[0], EV_READ, dfd_cb, &i);
+	tt_assert(e);
+
+	event_add(e, NULL);
+	tt_assert(event_pending(e, EV_READ, NULL));
+	close(data->pair[0]);
+	ret = event_base_loop(base, EVLOOP_ONCE);
+	tt_int_op(i, ==, 0);
+	tt_int_op(ret, ==, -1);
+
+end:
+	if (e)
+		event_free(e);
+	if (base)
+		event_base_free(base);
+}
+
+static void
+test_event_closed_fd_epoll(void *arg)
+{
+	struct timeval tv;
+	struct event *e;
+	struct basic_test_data *data = (struct basic_test_data *)arg;
+	struct event_base *base;
+	int i = 0, ret;
+
+	base = event_base_new();
+	tt_assert(base);
+
+	event_enable_method("epoll");
+
+	e = event_new(base, data->pair[0], EV_READ | EV_CLOSED, dfd_cb, &i);
+	tt_assert(e);
+
+	tv.tv_sec = 0;
+	tv.tv_usec = 500 * 1000;
+	event_add(e, &tv);
+	tt_assert(event_pending(e, EV_READ, NULL));
+	close(data->pair[0]);
+	ret = event_base_loop(base, EVLOOP_ONCE);
+	tt_int_op(i, ==, 0);
+	tt_int_op(ret, ==, 1);
+
+end:
+	if (e)
+		event_free(e);
+	if (base)
+		event_base_free(base);
+}
+
 /* You can't do this test on windows, since dup2 doesn't work on sockets */
 
 /* Regression test for our workaround for a fun epoll/linux related bug
@@ -3362,10 +3460,10 @@ struct testcase_t main_testcases[] = {
 	LEGACY(want_only_once, TT_ISOLATED),
 	{ "event_once", test_event_once, TT_ISOLATED, &basic_setup, NULL },
 	{ "event_once_never", test_event_once_never, TT_ISOLATED, &basic_setup, NULL },
-	{ "event_pending", test_event_pending, TT_ISOLATED, &basic_setup,
-	  NULL },
-	{ "event_closed_fd", test_event_closed_fd, TT_ISOLATED, &basic_setup,
-	  NULL },
+	{ "event_pending", test_event_pending, TT_ISOLATED, &basic_setup, NULL },
+	{ "event_closed_fd_poll", test_event_closed_fd_poll, TT_ISOLATED, &basic_setup, NULL },
+	{ "event_closed_fd_select", test_event_closed_fd_select, TT_ISOLATED, &basic_setup, NULL },
+	{ "event_closed_fd_epoll", test_event_closed_fd_epoll, TT_ISOLATED, &basic_setup, NULL },
 
 #ifndef _WIN32
 	{ "dup_fd", test_dup_fd, TT_ISOLATED, &basic_setup, NULL },
