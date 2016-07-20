@@ -2914,8 +2914,42 @@ test_event_closed_fd_epoll(void *arg)
 	tt_assert(event_pending(e, EV_READ, NULL));
 	close(data->pair[0]);
 	ret = event_base_loop(base, EVLOOP_ONCE);
-	tt_int_op(i, ==, 0);
-	tt_int_op(ret, ==, 1);
+	tt_int_op(i, ==, EV_TIMEOUT);
+	tt_int_op(ret, ==, 0);
+
+end:
+	if (e)
+		event_free(e);
+	if (base)
+		event_base_free(base);
+}
+
+static void
+test_event_closed_fd_epoll_changelist(void *arg)
+{
+	struct timeval tv;
+	struct event *e;
+	struct basic_test_data *data = (struct basic_test_data *)arg;
+	struct event_base *base;
+	int i = 0, ret;
+
+	base = event_base_new();
+	tt_assert(base);
+
+	setenv("EVENT_EPOLL_USE_CHANGELIST", "1", 1);
+	event_enable_method("epoll");
+
+	e = event_new(base, data->pair[0], EV_READ | EV_CLOSED, dfd_cb, &i);
+	tt_assert(e);
+
+	tv.tv_sec = 0;
+	tv.tv_usec = 500 * 1000;
+	event_add(e, &tv);
+	tt_assert(event_pending(e, EV_READ, NULL));
+	close(data->pair[0]);
+	ret = event_base_loop(base, EVLOOP_ONCE);
+	tt_int_op(i, ==, EV_TIMEOUT);
+	tt_int_op(ret, ==, 0);
 
 end:
 	if (e)
@@ -3464,6 +3498,7 @@ struct testcase_t main_testcases[] = {
 	{ "event_closed_fd_poll", test_event_closed_fd_poll, TT_ISOLATED, &basic_setup, NULL },
 	{ "event_closed_fd_select", test_event_closed_fd_select, TT_ISOLATED, &basic_setup, NULL },
 	{ "event_closed_fd_epoll", test_event_closed_fd_epoll, TT_ISOLATED, &basic_setup, NULL },
+	{ "event_closed_fd_epoll_changelist", test_event_closed_fd_epoll_changelist, TT_ISOLATED, &basic_setup, NULL },
 
 #ifndef _WIN32
 	{ "dup_fd", test_dup_fd, TT_ISOLATED, &basic_setup, NULL },
