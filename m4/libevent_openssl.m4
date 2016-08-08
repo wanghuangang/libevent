@@ -27,6 +27,8 @@ case "$enable_openssl" in
 	LIBS=""
 	OPENSSL_LIBS=""
 	for lib in crypto eay32; do
+		# clear cache
+		unset ac_cv_search_SSL_new
 		AC_SEARCH_LIBS([SSL_new], [ssl ssl32],
 		    [have_openssl=yes
 		    OPENSSL_LIBS="$LIBS -l$lib $EV_LIB_GDI $EV_LIB_WS32 $OPENSSL_LIBADD"],
