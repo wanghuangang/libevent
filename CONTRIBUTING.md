@@ -2,7 +2,7 @@
 
 ## Coding style
 
-First and most generic rule: just look around.
+First and most generic rule: **just look around**.
 
 - You can check the whole file with `uncrustify`:
 ```shell
@@ -74,7 +74,7 @@ function uncrustify_git()
 - Or you can check patches with `clang-format-diff`:
 ```bash
 ln -s /path/to/clang-format-config .clang-format
-git show origin/master | clang-format-diff -p1
+git show HEAD | clang-format-diff -p1
 ```
 
 - [uncrustify config](https://strcpy.net/mark/libevent-uncrustify.cfg)
