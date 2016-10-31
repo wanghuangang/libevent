@@ -55,6 +55,9 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#include <openssl/async.h>
+#endif
 #include "openssl-compat.h"
 
 #include <string.h>
@@ -164,7 +167,7 @@ static int disable_tls_11_and_12 = 0;
 static SSL_CTX *the_ssl_ctx = NULL;
 
 SSL_CTX *
-get_ssl_ctx(void)
+get_ssl_ctx(int async)
 {
 	if (the_ssl_ctx)
 		return the_ssl_ctx;
@@ -179,6 +182,8 @@ get_ssl_ctx(void)
 		SSL_CTX_set_options(the_ssl_ctx, SSL_OP_NO_TLSv1_1);
 #endif
 	}
+	if (async)
+		SSL_CTX_set_mode(the_ssl_ctx, SSL_MODE_ASYNC);
 	return the_ssl_ctx;
 }
 
@@ -224,6 +229,8 @@ enum regress_openssl_type
 	REGRESS_OPENSSL_FREED = 256,
 	REGRESS_OPENSSL_TIMEOUT = 512,
 	REGRESS_OPENSSL_SLEEP = 1024,
+
+	REGRESS_OPENSSL_ASYNC = 2048,
 };
 
 static void
@@ -384,6 +391,15 @@ open_ssl_bufevs(struct bufferevent **bev1_out, struct bufferevent **bev2_out,
 	bufferevent_openssl_set_allow_dirty_shutdown(*bev2_out, dirty_shutdown);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+int ssl_async_jobfunc(void *arg)
+{
+	usleep(1000);
+	ASYNC_pause_job();
+	return 1;
+}
+#endif
+
 static void
 regress_bufferevent_openssl(void *arg)
 {
@@ -394,11 +410,13 @@ regress_bufferevent_openssl(void *arg)
 	X509 *cert = ssl_getcert();
 	EVP_PKEY *key = ssl_getkey();
 	int flags = BEV_OPT_DEFER_CALLBACKS;
+	int async;
 	struct bufferevent *bev_ll[2] = { NULL, NULL };
 	evutil_socket_t *fd_pair = NULL;
 
 	enum regress_openssl_type type;
 	type = (enum regress_openssl_type)data->setup_data;
+	async = type & REGRESS_OPENSSL_ASYNC;
 
 	tt_assert(cert);
 	tt_assert(key);
@@ -415,8 +433,23 @@ regress_bufferevent_openssl(void *arg)
 		renegotiate_at = 600;
 	}
 
-	ssl1 = SSL_new(get_ssl_ctx());
-	ssl2 = SSL_new(get_ssl_ctx());
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	if (async) {
+		ASYNC_JOB *job = NULL;
+		ASYNC_WAIT_CTX *ctx = NULL;
+		int ret;
+
+		ASYNC_init_thread(1, 2);
+
+		ctx = ASYNC_WAIT_CTX_new();
+		ASYNC_start_job(&job, ctx, &ret, ssl_async_jobfunc, NULL, 0);
+
+		/** XXX: free resources */
+	}
+#endif
+
+	ssl1 = SSL_new(get_ssl_ctx(async));
+	ssl2 = SSL_new(get_ssl_ctx(async));
 
 	SSL_use_certificate(ssl2, cert);
 	SSL_use_PrivateKey(ssl2, key);
@@ -513,7 +546,7 @@ acceptcb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct basic_test_data *data = arg;
 	struct bufferevent *bev;
 	enum regress_openssl_type type;
-	SSL *ssl = SSL_new(get_ssl_ctx());
+	SSL *ssl = SSL_new(get_ssl_ctx(0));
 
 	type = (enum regress_openssl_type)data->setup_data;
 
@@ -685,7 +718,7 @@ regress_bufferevent_openssl_connect(void *arg)
 	tt_assert(listener);
 	tt_assert(evconnlistener_get_fd(listener) >= 0);
 
-	ssl = SSL_new(get_ssl_ctx());
+	ssl = SSL_new(get_ssl_ctx(0));
 	tt_assert(ssl);
 
 	bev = bufferevent_openssl_socket_new(
@@ -728,6 +761,10 @@ struct testcase_t ssl_testcases[] = {
 #define T(a) ((void *)(a))
 	{ "bufferevent_socketpair", regress_bufferevent_openssl,
 	  TT_ISOLATED, &basic_setup, T(REGRESS_OPENSSL_SOCKETPAIR) },
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	{ "bufferevent_socketpair_async", regress_bufferevent_openssl,
+	  TT_ISOLATED, &basic_setup, T(REGRESS_OPENSSL_ASYNC | REGRESS_OPENSSL_SOCKETPAIR) },
+#endif
 	{ "bufferevent_filter", regress_bufferevent_openssl,
 	  TT_ISOLATED, &basic_setup, T(REGRESS_OPENSSL_FILTER) },
 	{ "bufferevent_renegotiate_socketpair", regress_bufferevent_openssl,

@@ -116,7 +116,7 @@ http_bind(struct evhttp *myhttp, ev_uint16_t *pport, int mask)
 static struct bufferevent *
 https_bev(struct event_base *base, void *arg)
 {
-	SSL *ssl = SSL_new(get_ssl_ctx());
+	SSL *ssl = SSL_new(get_ssl_ctx(0));
 
 	SSL_use_certificate(ssl, ssl_getcert());
 	SSL_use_PrivateKey(ssl, ssl_getkey());
@@ -433,7 +433,7 @@ create_bev(struct event_base *base, int fd, int ssl)
 		bev = bufferevent_socket_new(base, fd, flags);
 	} else {
 #ifdef EVENT__HAVE_OPENSSL
-		SSL *ssl = SSL_new(get_ssl_ctx());
+		SSL *ssl = SSL_new(get_ssl_ctx(0));
 		bev = bufferevent_openssl_socket_new(
 			base, fd, ssl, BUFFEREVENT_SSL_CONNECTING, flags);
 		bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);

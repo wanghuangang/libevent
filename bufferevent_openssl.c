@@ -501,6 +501,10 @@ conn_closed(struct bufferevent_openssl *bev_ssl, int when, int errcode, int ret)
 			dirty_shutdown = 1;
 		break;
 	case SSL_ERROR_SYSCALL:
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	case SSL_ERROR_WANT_ASYNC:
+	case SSL_ERROR_WANT_ASYNC_JOB:
+#endif
 		/* IO error; possibly a dirty shutdown. */
 		if (ret == 0 && ERR_peek_error() == 0)
 			dirty_shutdown = 1;
@@ -606,6 +610,9 @@ do_read(struct bufferevent_openssl *bev_ssl, int n_to_read) {
 			print_err(err);
 			switch (err) {
 			case SSL_ERROR_WANT_READ:
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+			case SSL_ERROR_WANT_ASYNC:
+#endif
 				/* Can't read until underlying has more data. */
 				if (bev_ssl->read_blocked_on_write)
 					if (clear_rbow(bev_ssl) < 0)
@@ -684,6 +691,9 @@ do_write(struct bufferevent_openssl *bev_ssl, int atmost)
 			print_err(err);
 			switch (err) {
 			case SSL_ERROR_WANT_WRITE:
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+			case SSL_ERROR_WANT_ASYNC:
+#endif
 				/* Can't read until underlying has more data. */
 				if (bev_ssl->write_blocked_on_read)
 					if (clear_wbor(bev_ssl) < 0)
