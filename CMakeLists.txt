@@ -813,6 +813,14 @@ add_library(event_extra ${EVENT__LIBRARY_TYPE}
     ${SRC_CORE}
     ${SRC_EXTRA})
 
+if (NOT EVENT__DISABLE_OPENSSL)
+  add_library(event_openssl ${EVENT__LIBRARY_TYPE}
+      ${HDR_PRIVATE}
+      ${HDR_COMPAT}
+      ${HDR_PUBLIC}
+      ${SRC_CORE})
+endif()
+
 # library exists for historical reasons; it contains the contents of
 # both libevent_core and libevent_extra. You shouldn’t use it; it may
 # go away in a future version of Libevent.
@@ -846,6 +854,10 @@ if (EVENT__BUILD_SHARED_LIBRARIES)
                                       ${CMAKE_THREAD_LIBS_INIT}
                                       ${LIB_PLATFORM})
 
+   target_link_libraries(event_openssl ${OPENSSL_LIBRARIES}
+                                       ${CMAKE_THREAD_LIBS_INIT}
+                                       ${LIB_PLATFORM})
+
   set_target_properties(event
         PROPERTIES SOVERSION
             ${EVENT_ABI_LIBVERSION})
@@ -855,6 +867,10 @@ if (EVENT__BUILD_SHARED_LIBRARIES)
             ${EVENT_ABI_LIBVERSION})
 
   set_target_properties(event_extra
+        PROPERTIES SOVERSION
+            ${EVENT_ABI_LIBVERSION})
+
+  set_target_properties(event_openssl
         PROPERTIES SOVERSION
             ${EVENT_ABI_LIBVERSION})
 
@@ -1351,7 +1367,7 @@ foreach(p LIB BIN INCLUDE CMAKE)
 endforeach()
 
 # Export targets (This is used for other CMake projects to easily find the libraries and include files).
-export(TARGETS event event_extra event_core
+export(TARGETS event event_extra event_core event_openssl
         FILE "${PROJECT_BINARY_DIR}/LibeventTargets.cmake")
 export(PACKAGE libevent)
 
@@ -1428,6 +1444,7 @@ set(LIBEVENT_LIBRARIES
         event
         event_core
         event_extra
+        event_openssl
         CACHE STRING "Libevent libraries")
 
 message(STATUS "")
