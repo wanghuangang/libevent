@@ -2900,8 +2900,8 @@ evhttp_send_reply_end(struct evhttp_request *req)
 	req->userdone = 1;
 
 	if (req->chunked) {
-		evbuffer_add(output, "0\r\n\r\n", 5);
 		evhttp_write_buffer(req->evcon, evhttp_send_done, NULL);
+		evbuffer_add(output, "0\r\n\r\n", 5);
 		req->chunked = 0;
 	} else if (evbuffer_get_length(output) == 0) {
 		/* let the connection know that we are done with the request */
