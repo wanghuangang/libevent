@@ -1413,12 +1413,47 @@ static struct date_rfc1123_case {
 	{0, ""} /* end of test cases. */
 };
 
+struct rfc1123 {
+	char dow[4];
+	int mday;
+	char month[4];
+	int year;
+	int hour;
+	int minutes;
+	int seconds;
+};
+
+static int cmp_date(struct rfc1123 *d1, struct tm *d2, int error)
+{
+	return
+		d1->mday == d2->tm_mday &&
+		d1->year == d2->tm_year + 1900 &&
+		d1->hour == d2->tm_hour &&
+		d1->minutes == d2->tm_min &&
+		d1->seconds == d2->tm_sec;
+}
+
 static void
 test_evutil_date_rfc1123(void *arg)
 {
 	struct tm query;
 	char result[30];
 	size_t i = 0;
+
+	/** System wide */
+	{
+		struct rfc1123 d;
+		time_t t = time(NULL);
+		create_tm_from_unix_epoch(&query, t);
+		evutil_date_rfc1123(result, sizeof(result), NULL);
+
+		tt_int_op(sscanf(result,
+			"%3s, %2d %3s %4d %2d:%2d:%2d GMT",
+			d.dow, &d.mday, d.month, &d.year, &d.hour, &d.minutes, &d.seconds
+		), ==, 7);
+
+		tt_int_op(cmp_date(&d, &query, 1), ==, 1);
+	}
 
 	/* Checks if too small buffers are safely accepted. */
 	{
