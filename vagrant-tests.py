@@ -21,10 +21,14 @@ class Box(vagrant.Vagrant):
         )
 
     def run(self):
+        tests = {}
+
         prepared = True
         if not self.no_pkg:
             prepared = self._run("prepare", "NO_PKG")
-        tests = {}
+
+        tests["{}_prepare".format(self.name)] = prepared
+
         if prepared:
             tests["{}_cmake".format(self.name)] = self._run("cmake", "NO_CMAKE")
             tests["{}_autotools".format(self.name)] = self._run("autotools", "NO_AUTOTOOLS")
