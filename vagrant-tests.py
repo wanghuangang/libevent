@@ -5,7 +5,7 @@ from termcolor import colored
 import vagrant
 import subprocess, threading
 
-class Box(vagrant.Vagrant):
+class Box:
     def __init__(self, name, **kwargs):
         self.name = name
         self.timeout = kwargs.pop('timeout', 0)
@@ -13,12 +13,7 @@ class Box(vagrant.Vagrant):
         self.no_pkg = kwargs.pop('no_pkg', False)
         self._env = os.environ.copy()
         self.last = False
-
-        vagrant.Vagrant.__init__(
-            self,
-            err_cm=vagrant.make_file_cm(self._log("stderr")),
-            out_cm=vagrant.make_file_cm(self._log("stdout")),
-        )
+        self.box = None
 
     def run(self):
         tests = {}
@@ -38,11 +33,13 @@ class Box(vagrant.Vagrant):
 
         return tests
     def _run(self, which, env):
-        self._unlink(self._log("stderr"))
-        self._unlink(self._log("stdout"))
-
         self.info(which)
-        self._reset_env(env)
+
+        self.box = vagrant.Vagrant(
+            err_cm=self._create_log(which, "stderr"),
+            out_cm=self._create_log(which, "stdout"),
+            env=self._box_env(env),
+        )
 
         def target():
             self.debug("starting")
@@ -59,6 +56,8 @@ class Box(vagrant.Vagrant):
             self.halt()
             thread.join()
 
+        self.box = None
+
         if self.last:
             return True
         else:
@@ -67,8 +66,7 @@ class Box(vagrant.Vagrant):
 
     def up(self):
         try:
-            vagrant.Vagrant.up(
-                self,
+            self.box.up(
                 vm_name=self.name,
                 provision=True,
             )
@@ -77,7 +75,7 @@ class Box(vagrant.Vagrant):
         return True
     def halt(self):
         try:
-            vagrant.Vagrant.halt(self)
+            self.box.halt()
         except subprocess.CalledProcessError:
             pass
 
@@ -99,14 +97,19 @@ class Box(vagrant.Vagrant):
     def debug(self, message):
         logging.debug("box[name={}] {}".format(self.name, message))
 
-    def _reset_env(self, key):
-        self.env = self._env
-        self.env['NO_PKG'] = "true"
-        self.env['NO_CMAKE'] = "true"
-        self.env['NO_AUTOTOOLS'] = "true"
-        self.env[key] = "false"
-    def _log(self, std):
-        return ".vagrant/{}_{}.log".format(std, self.name)
+    def _box_env(self, key):
+        env = self._env
+        env['NO_PKG'] = "true"
+        env['NO_CMAKE'] = "true"
+        env['NO_AUTOTOOLS'] = "true"
+        env[key] = "false"
+        return env
+    def _create_log(self, which, std):
+        log = self._log(which, std)
+        self._unlink(log)
+        return vagrant.make_file_cm(log)
+    def _log(self, which, std):
+        return ".vagrant/{}_{}_{}.log".format(self.name, which, std)
 
     @staticmethod
     def _read(path):
