@@ -3,14 +3,16 @@
 import os, sys, argparse, logging
 from termcolor import colored
 import vagrant
-import subprocess
+import subprocess, threading
 
 class Box(vagrant.Vagrant):
     def __init__(self, name, **kwargs):
         self.name = name
+        self.timeout = kwargs.pop('timeout', 0)
         self.verbose = kwargs.pop('verbose', False)
         self.no_pkg = kwargs.pop('no_pkg', False)
         self._env = os.environ.copy()
+        self.last = False
 
         vagrant.Vagrant.__init__(
             self,
@@ -35,12 +37,29 @@ class Box(vagrant.Vagrant):
         self._unlink(self._log("stderr"))
         self._unlink(self._log("stdout"))
 
-        self.log(which)
+        self.info(which)
         self._reset_env(env)
-        if not self.up():
+
+        def target():
+            self.debug("starting")
+            self.last = self.up()
+            self.debug("finished: result={}".format(self.last))
+
+        thread = threading.Thread(target=target)
+        thread.start()
+        thread.join(self.timeout)
+        self.debug("joining")
+
+        if thread.is_alive():
+            self.warning("halting")
+            self.halt()
+            thread.join()
+
+        if self.last:
+            return True
+        else:
             self.print_logs()
             return False
-        return True
 
     def up(self):
         try:
@@ -52,13 +71,18 @@ class Box(vagrant.Vagrant):
         except subprocess.CalledProcessError:
             return False
         return True
+    def halt(self):
+        try:
+            vagrant.Vagrant.halt(self)
+        except subprocess.CalledProcessError:
+            pass
 
     def print_logs(self):
         if not self.verbose:
             return
-        self.log("stdout")
+        self.debug("stdout")
         print(self.stdout())
-        self.log("stderr")
+        self.debug("stderr")
         print(self.stderr())
 
     def stdout(self):
@@ -66,8 +90,10 @@ class Box(vagrant.Vagrant):
     def stderr(self):
         return self._read(self._log("stderr"))
 
-    def log(self, message):
+    def info(self, message):
         logging.info("box[name={}] {}".format(self.name, message))
+    def debug(self, message):
+        logging.debug("box[name={}] {}".format(self.name, message))
 
     def _reset_env(self, key):
         self.env = self._env
@@ -94,6 +120,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("-v", "--verbose", action="count")
     p.add_argument("-b", "--boxes", nargs="+")
+    p.add_argument("-t", "--timeout", type=int, default=60*60*3)
     p.add_argument("--no-pkg", action="store_true")
     args = p.parse_args()
 
@@ -116,6 +143,7 @@ def main():
     tests = {}
     boxes_args = {
         "verbose": args.verbose,
+        "timeout": args.timeout,
         "no_pkg": args.no_pkg,
     }
     for name in names:
