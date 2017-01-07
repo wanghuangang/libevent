@@ -92,6 +92,8 @@ class Box:
     def stderr(self):
         return self._read(self._log("stderr"))
 
+    def warning(self, message):
+        logging.warning("box[name={}] {}".format(self.name, message))
     def info(self, message):
         logging.info("box[name={}] {}".format(self.name, message))
     def debug(self, message):
