@@ -158,7 +158,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("-v", "--verbose", action="count")
     p.add_argument("-b", "--boxes", nargs="+")
-    p.add_argument("-t", "--timeout", type=int, default=60*60*3)
+    p.add_argument("-t", "--timeout", type=int, default=60*60*1)
     p.add_argument("--no-pkg", action="store_true")
     p.add_argument("--no-email", action="store_true")
     args = p.parse_args()
