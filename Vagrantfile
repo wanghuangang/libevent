@@ -17,19 +17,19 @@
 
 Vagrant.configure("2") do |config|
   # to allow running boxes provisions in parallel, we can't share the same dirs
-  # via virtualbox, however sometimes it is the only way, so instead let's
+  # via vm, however sometimes it is the only way, so instead let's
   # create an archive of HEAD (this way we will not have any trash there) and
   # extract it for every box to the separate folder.
   #
   # P.S. we will change this --prefix with tar(1) --trasnform
   system('git archive --prefix=libevent/ --output=.vagrant/libevent.tar HEAD')
 
-  config.vm.provider "virtualbox" do |vb|
-    vb.memory = "512"
+  config.vm.provider "libvirt" do |domain|
+    domain.memory = "512"
 
-    # otherwise osx fails, anyway we do not need this
-    vb.customize ["modifyvm", :id, "--usb", "off"]
-    vb.customize ["modifyvm", :id, "--usbehci", "off"]
+    # https://github.com/vagrant-libvirt/vagrant-libvirt/issues/45
+    domain.uri = 'qemu+unix:///system'
+    domain.driver = 'kvm'
   end
 
   # disable /vagrant share, in case we will not use default mount
@@ -39,8 +39,7 @@ Vagrant.configure("2") do |config|
     system('tar --overwrite --transform=s/libevent/libevent-linux/ -xf .vagrant/libevent.tar -C .vagrant/')
 
     ubuntu.vm.box = "ubuntu/xenial64"
-    ubuntu.vm.synced_folder ".vagrant/libevent-linux", "/vagrant",
-      type: "rsync"
+    ubuntu.vm.synced_folder ".vagrant/libevent-linux", "/vagrant", type: "nfs"
 
     if ENV['NO_PKG'] != "true"
       ubuntu.vm.provision "shell", inline: <<-SHELL
@@ -80,8 +79,7 @@ Vagrant.configure("2") do |config|
     system('tar --overwrite --transform=s/libevent/libevent-freebsd/ -xf .vagrant/libevent.tar -C .vagrant/')
 
     freebsd.vm.box = "freebsd/FreeBSD-11.0-STABLE"
-    freebsd.vm.synced_folder ".vagrant/libevent-freebsd", "/vagrant",
-      type: "rsync", group: "wheel"
+    freebsd.vm.synced_folder ".vagrant/libevent-freebsd", "/vagrant", type: "nfs"
 
     # otherwise reports error
     freebsd.ssh.shell = "sh"
@@ -121,8 +119,7 @@ Vagrant.configure("2") do |config|
     system('tar --overwrite --transform=s/libevent/libevent-netbsd/ -xf .vagrant/libevent.tar -C .vagrant/')
 
     netbsd.vm.box = "kja/netbsd-7-amd64"
-    netbsd.vm.synced_folder ".vagrant/libevent-netbsd", "/vagrant",
-      type: "rsync", group: "wheel"
+    netbsd.vm.synced_folder ".vagrant/libevent-netbsd", "/vagrant", type: "nfs"
 
     # TODO: more reliable way to install packages
     if ENV['NO_PKG'] != "true"
@@ -162,12 +159,8 @@ Vagrant.configure("2") do |config|
   config.vm.define "solaris" do |solaris|
     system('tar --overwrite --transform=s/libevent/libevent-solaris/ -xf .vagrant/libevent.tar -C .vagrant/')
 
-    # XXX:
-    # - solaris do not have '-or' it only has '-o' for find(1), so we can't use
-    #   rsync
-    # - and autoconf(1) doesn't work on virtualbox share, ugh
-    solaris.vm.synced_folder ".vagrant/libevent-solaris", "/vagrant-vbox",
-      type: "virtualbox"
+    # XXX: autoconf(1) doesn't work on libvirt share, ugh
+    solaris.vm.synced_folder ".vagrant/libevent-solaris", "/vagrant-vbox", type: "nfs"
 
     solaris.vm.box = "tnarik/solaris10-minimal"
     if ENV['NO_PKG'] != "true"
@@ -175,11 +168,11 @@ Vagrant.configure("2") do |config|
       solaris.vm.provision "shell", inline: <<-SHELL
         pkgadd -d http://get.opencsw.org/now
         pkgutil -U
-        pkgutil -y -i libssl_dev cmake rsync python gmake gcc5core automake autoconf libtool
+        pkgutil -y -i libssl_dev cmake python gmake gcc5core automake autoconf libtool
       SHELL
     end
 
-    # copy from virtualbox mount to newly created folder
+    # copy from libvirt mount to newly created folder
     solaris.vm.provision "shell", privileged: false, inline: <<-SHELL
       rm -fr ~/vagrant
       cp -r /vagrant-vbox ~/vagrant
@@ -225,8 +218,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "osx" do |osx|
     system('tar --overwrite --transform=s/libevent/libevent-osx/ -xf .vagrant/libevent.tar -C .vagrant/')
 
-    osx.vm.synced_folder ".vagrant/libevent-osx", "/vagrant",
-      type: "rsync", group: "wheel"
+    osx.vm.synced_folder ".vagrant/libevent-osx", "/vagrant", type: "nfs"
 
     osx.vm.box = "jhcook/osx-elcapitan-10.11"
     if ENV['NO_PKG'] != "true"
@@ -274,8 +266,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "centos" do |centos|
     system('tar --overwrite --transform=s/libevent/libevent-centos/ -xf .vagrant/libevent.tar -C .vagrant/')
 
-    centos.vm.synced_folder ".vagrant/libevent-centos", "/vagrant",
-      type: "rsync", group: "wheel"
+    centos.vm.synced_folder ".vagrant/libevent-centos", "/vagrant", type: "nfs"
 
     centos.vm.box = "centos/7"
     if ENV['NO_PKG'] != "true"
@@ -324,13 +315,11 @@ Vagrant.configure("2") do |config|
     system('tar --overwrite --transform=s/libevent/libevent-win/ -xf .vagrant/libevent.tar -C .vagrant/')
 
     # 512MB not enough after libtool install, huh
-    win.vm.provider "virtualbox" do |vb|
-      vb.memory = "1024"
+    win.vm.provider "libvirt" do |domain|
+      domain.memory = "1024"
     end
 
-    # windows does not have rsync builtin, let's use virtualbox for now
-    win.vm.synced_folder ".vagrant/libevent-win", "/vagrant",
-      type: "virtualbox"
+    win.vm.synced_folder ".vagrant/libevent-win", "/vagrant", type: "nfs"
 
     win.vm.box = "senglin/win-10-enterprise-vs2015community"
     if ENV['NO_PKG'] != "true"
