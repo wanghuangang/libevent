@@ -14,6 +14,7 @@
 # - NO_PKG        -- do not install packages
 # - NO_CMAKE      -- do not run with cmake
 # - NO_AUTOTOOLS  -- do not run with autoconf/automake
+# - OSX_BOOTLOADER-- SeaBIOS2EFI loader (chameleon)
 
 Vagrant.configure("2") do |config|
   # to allow running boxes provisions in parallel, we can't share the same dirs
@@ -220,9 +221,26 @@ Vagrant.configure("2") do |config|
   config.vm.define "osx" do |osx|
     system('tar --overwrite --transform=s/libevent/libevent-osx/ -xf .vagrant/libevent.tar -C .vagrant/')
 
+    osx.vm.provider "libvirt" do |domain|
+      domain.kernel = ENV['OSX_BOOTLOADER']
+
+      domain.nic_model_type = "e1000"
+
+      domain.machine_type = "q35"
+
+      domain.commandline :value => "-device"
+      domain.commandline :value => "isa-applesmc,osk=ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc"
+
+      domain.commandline :value => "-smbios"
+      domain.commandline :value => "type=2"
+
+      domain.commandline :value => "-cpu"
+      domain.commandline :value => "Penryn,vendor=GenuineIntel"
+    end
+
     osx.vm.synced_folder ".vagrant/libevent-osx", "/vagrant", type: "nfs"
 
-    osx.vm.box = "jhcook/osx-elcapitan-10.11"
+    osx.vm.box = "osx-mountain-lion-10.8-xcode"
     if ENV['NO_PKG'] != "true"
       osx.vm.provision "shell", privileged: false, inline: <<-SHELL
         ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
