@@ -38,7 +38,12 @@ Vagrant.configure("2") do |config|
   config.vm.define "ubuntu" do |ubuntu|
     system('tar --overwrite --transform=s/libevent/libevent-linux/ -xf .vagrant/libevent.tar -C .vagrant/')
 
-    ubuntu.vm.box = "ubuntu/xenial64"
+    # Cannot use xenial/16 here, since otherwise network does not work
+    #
+    # @see https://github.com/vagrant-libvirt/vagrant-libvirt/issues/609
+    # @see https://github.com/vagrant-libvirt/vagrant-libvirt/issues/607
+    # @see https://www.freedesktop.org/wiki/Software/systemd/PredictableNetworkInterfaceNames/
+    ubuntu.vm.box = "nrclark/xenial64-minimal-libvirt"
     ubuntu.vm.synced_folder ".vagrant/libevent-linux", "/vagrant", type: "nfs"
 
     if ENV['NO_PKG'] != "true"
