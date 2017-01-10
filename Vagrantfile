@@ -322,6 +322,7 @@ Vagrant.configure("2") do |config|
     # 512MB not enough after libtool install, huh
     win.vm.provider "libvirt" do |domain|
       domain.memory = "1024"
+      domain.nic_model_type = "e1000"
     end
 
     win.vm.synced_folder ".vagrant/libevent-win", "/vagrant", type: "nfs"
