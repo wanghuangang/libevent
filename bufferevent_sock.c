@@ -438,13 +438,13 @@ bufferevent_socket_connect(struct bufferevent *bev,
 		/* The connect succeeded already. How very BSD of it. */
 		result = 0;
 		bufev_p->connecting = 1;
-		event_active(&bev->ev_write, EV_WRITE, 1);
+		bufferevent_trigger_nolock_(bev, EV_WRITE, BEV_OPT_DEFER_CALLBACKS);
 	} else {
 		/* The connect failed already.  How very BSD of it. */
 		bufev_p->connection_refused = 1;
 		bufev_p->connecting = 1;
 		result = 0;
-		event_active(&bev->ev_write, EV_WRITE, 1);
+		bufferevent_trigger_nolock_(bev, EV_WRITE, BEV_OPT_DEFER_CALLBACKS);
 	}
 
 	goto done;
