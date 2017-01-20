@@ -61,14 +61,14 @@ script:
       ./autogen.sh &&
       ./configure $EVENT_CONFIGURE_OPTIONS &&
       make &&
-      make verify;
+      make -j30 verify;
     fi
   - if [ "$EVENT_BUILD_METHOD" = "cmake" ]; then
       mkdir build &&
       cd build &&
       cmake .. $EVENT_CMAKE_OPTIONS &&
       cmake --build . &&
-      CTEST_OUTPUT_ON_FAILURE=1 cmake --build . --target verify;
+      CTEST_PARALLEL_LEVEL=30 CTEST_OUTPUT_ON_FAILURE=1 cmake --build . --target verify;
     fi
 
 after_script:
