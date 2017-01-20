@@ -2,7 +2,9 @@ os:
   - linux
   - osx
 sudo: false
+
 dist: trusty
+osx_image: xcode8.2
 
 env:
   matrix:
