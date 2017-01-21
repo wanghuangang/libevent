@@ -126,7 +126,7 @@ script:
       ./autogen.sh &&
       ./configure $EVENT_CONFIGURE_OPTIONS &&
       make &&
-      make -j20 verify;
+      travis_wait 30 make -j20 verify;
     fi
   - if [ "$EVENT_BUILD_METHOD" = "cmake" ]; then
       mkdir build &&
