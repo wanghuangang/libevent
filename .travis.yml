@@ -69,6 +69,7 @@ script:
   - ANSI_GREEN="\033[32;1m"
   - ANSI_RESET="\033[0m"
   - ANSI_CLEAR="\033[0K"
+  - trap 'ps aux' EXIT
   - travis_wait() {
       trap 'ps aux' EXIT;
 
