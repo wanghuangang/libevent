@@ -34,6 +34,7 @@ before_install:
   - if [ -n "$COVERALLS" ]; then
       pip install --user cpp-coveralls;
     fi
+  - export JOBS=20
   - if [ "$TRAVIS_OS_NAME" == "osx" ]; then
       brew update;
       brew uninstall libtool && brew install libtool;
@@ -50,6 +51,8 @@ before_install:
       export
         CFLAGS=-I$CMAKE_INCLUDE_PATH
         LDFLAGS=-L$CMAKE_LIBRARY_PATH;
+
+      export JOBS=4;
     fi
 
 addons:
@@ -71,11 +74,11 @@ script:
       ./autogen.sh &&
       ./configure $EVENT_CONFIGURE_OPTIONS &&
       make &&
-      travis_wait 30 make -j20 verify;
+      travis_wait 30 make -j $JOBS verify;
     fi
   - if [ "$EVENT_BUILD_METHOD" = "cmake" ]; then
       export
-        CTEST_PARALLEL_LEVEL=20
+        CTEST_PARALLEL_LEVEL=$JOBS
         CTEST_OUTPUT_ON_FAILURE=1;
 
       mkdir build &&
