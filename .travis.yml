@@ -20,6 +20,8 @@ env:
     - EVENT_BUILD_METHOD=autotools EVENT_CONFIGURE_OPTIONS="--disable-thread-support"
     - EVENT_BUILD_METHOD=autotools EVENT_CONFIGURE_OPTIONS="--disable-debug-mode"
     - EVENT_BUILD_METHOD=autotools EVENT_CONFIGURE_OPTIONS="--disable-malloc-replacement"
+  allow_failures:
+    - os: osx
 
 language: c
 compiler:
