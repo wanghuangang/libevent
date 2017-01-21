@@ -113,12 +113,12 @@ script:
 
       echo -e "\n";
 
-      timeout=$(($timeout * 2))
+      timeout=$(($timeout * 10))
 
       while [ $count -lt $timeout ]; do
         count=$(($count + 1));
         echo -e "Still running ($count of $timeout) - $@";
-        sleep 30;
+        sleep $((60 / 10));
       done;
 
       echo -e "\n${ANSI_RED}Timeout (${timeout} minutes) reached. Terminating \"$@\"${ANSI_RESET}\n";
