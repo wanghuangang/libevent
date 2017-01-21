@@ -113,7 +113,9 @@ script:
 
       echo -e "\n";
 
-      while [ $count -lt $(($timeout * 2)) ]; do
+      timeout=$(($timeout * 2))
+
+      while [ $count -lt $timeout ]; do
         count=$(($count + 1));
         echo -e "Still running ($count of $timeout) - $@";
         sleep 30;
