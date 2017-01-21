@@ -33,6 +33,31 @@ environment:
       EVENT_CMAKE_OPTIONS: "-DEVENT__ENABLE_VERBOSE_DEBUG=ON"
     - EVENT_BUILD_METHOD: "cmake"
       EVENT_CMAKE_OPTIONS: "-DCMAKE_C_FLAGS='-DUNICODE -D_UNICODE'"
+
+# allow all, except ssl-less
+matrix:
+  allow_failures:
+    - EVENT_BUILD_METHOD: "autotools"
+      EVENT_CONFIGURE_OPTIONS: ""
+    - EVENT_BUILD_METHOD: "autotools"
+      EVENT_CONFIGURE_OPTIONS: "--disable-thread-support"
+    - EVENT_BUILD_METHOD: "autotools"
+      EVENT_CONFIGURE_OPTIONS: "--disable-debug-mode"
+    - EVENT_BUILD_METHOD: "autotools"
+      EVENT_CONFIGURE_OPTIONS: "--disable-malloc-replacement"
+    - EVENT_BUILD_METHOD: "cmake"
+      EVENT_CMAKE_OPTIONS: ""
+    - EVENT_BUILD_METHOD: "cmake"
+      EVENT_CMAKE_OPTIONS: "-DEVENT__DISABLE_THREAD_SUPPORT=ON"
+    - EVENT_BUILD_METHOD: "cmake"
+      EVENT_CMAKE_OPTIONS: "-DEVENT__DISABLE_DEBUG_MODE=ON"
+    - EVENT_BUILD_METHOD: "cmake"
+      EVENT_CMAKE_OPTIONS: "-DEVENT__DISABLE_MM_REPLACEMENT=ON"
+    - EVENT_BUILD_METHOD: "cmake"
+      EVENT_CMAKE_OPTIONS: "-DEVENT__ENABLE_VERBOSE_DEBUG=ON"
+    - EVENT_BUILD_METHOD: "cmake"
+      EVENT_CMAKE_OPTIONS: "-DCMAKE_C_FLAGS='-DUNICODE -D_UNICODE'"
+
 init:
   - 'echo Building libevent %version% for Windows'
   - 'echo System architecture: %PLATFORM%'
@@ -40,8 +65,10 @@ init:
   - 'echo Build folder is: %APPVEYOR_BUILD_FOLDER%'
   - 'echo Repo build commit is: %APPVEYOR_REPO_COMMIT%'
   - 'echo Cygwin root is: %CYG_ROOT%'
+
 install:
   - C:\MinGW\bin\mingw-get install autotools autoconf automake
+
 build_script:
   - ps: |
       if ($env:EVENT_BUILD_METHOD -eq 'autotools') {
