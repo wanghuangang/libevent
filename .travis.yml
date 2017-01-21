@@ -70,6 +70,8 @@ script:
   - ANSI_RESET="\033[0m"
   - ANSI_CLEAR="\033[0K"
   - travis_wait() {
+      trap 'ps aux' EXIT;
+
       local timeout=$1;
       if [[ $timeout =~ ^[0-9]+$ ]]; then
         shift;
@@ -105,6 +107,8 @@ script:
       return $result;
     }
   - travis_jigger() {
+      trap 'ps aux' EXIT;
+
       local cmd_pid=$1;
       shift;
       local timeout=$1;
