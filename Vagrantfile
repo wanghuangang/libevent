@@ -76,6 +76,47 @@ Vagrant.configure("2") do |config|
     end
   end
 
+  config.vm.define "ubuntu_x86" do |ubuntu_x86|
+    system('tar --overwrite --transform=s/libevent/libevent-linux_x86/ -xf .vagrant/libevent.tar -C .vagrant/')
+
+    ubuntu_x86.vm.box = "ubuntu/xenial32"
+    ubuntu_x86.vm.synced_folder ".vagrant/libevent-linux_x86", "/vagrant",
+      type: "rsync"
+
+    if ENV['NO_PKG'] != "true"
+      ubuntu_x86.vm.provision "shell", inline: <<-SHELL
+        apt-get update
+        apt-get install -y zlib1g-dev libssl-dev python2.7
+        apt-get install -y build-essential cmake ninja-build
+        apt-get install -y autoconf automake libtool
+      SHELL
+    end
+
+    if ENV['NO_CMAKE'] != "true"
+      ubuntu_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
+        cd /vagrant
+        rm -fr .cmake-vagrant
+        mkdir -p .cmake-vagrant
+        cd .cmake-vagrant
+        cmake -G Ninja ..
+
+        export CTEST_TEST_TIMEOUT=1800
+        export CTEST_OUTPUT_ON_FAILURE=1
+        export CTEST_PARALLEL_LEVEL=20
+        cmake --build . --target verify
+      SHELL
+    end
+
+    if ENV['NO_AUTOTOOLS'] != "true"
+      ubuntu_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
+        cd /vagrant
+        ./autogen.sh
+        ./configure
+        make -j20 verify
+      SHELL
+    end
+  end
+
   config.vm.define "freebsd" do |freebsd|
     system('tar --overwrite --transform=s/libevent/libevent-freebsd/ -xf .vagrant/libevent.tar -C .vagrant/')
 
@@ -307,6 +348,53 @@ Vagrant.configure("2") do |config|
 
     if ENV['NO_AUTOTOOLS'] != "true"
       centos.vm.provision "shell", privileged: false, inline: <<-SHELL
+        cd /vagrant
+        ./autogen.sh
+        ./configure
+        make -j20 verify
+      SHELL
+    end
+  end
+
+  config.vm.define "centos_x86" do |centos_x86|
+    system('tar --overwrite --transform=s/libevent/libevent-centos_x86/ -xf .vagrant/libevent.tar -C .vagrant/')
+
+    centos_x86.vm.synced_folder ".vagrant/libevent-centos_x86", "/vagrant",
+      type: "rsync", group: "wheel"
+
+    centos_x86.vm.box = "nrel/CentOS-6.5-i386"
+    if ENV['NO_PKG'] != "true"
+      centos_x86.vm.provision "shell", inline: <<-SHELL
+        echo "[russianfedora]" > /etc/yum.repos.d/russianfedora.repo
+        echo name=russianfedora >> /etc/yum.repos.d/russianfedora.repo
+        echo baseurl=http://mirror.yandex.ru/fedora/russianfedora/russianfedora/free/el/releases/6/Everything/i386/os/ >> /etc/yum.repos.d/russianfedora.repo
+        echo enabled=1 >> /etc/yum.repos.d/russianfedora.repo
+        echo gpgcheck=0 >> /etc/yum.repos.d/russianfedora.repo
+      SHELL
+      centos_x86.vm.provision "shell", inline: <<-SHELL
+        yum -y install zlib-devel openssl-devel python
+        yum -y install gcc cmake ninja-build
+        yum -y install autoconf automake libtool
+      SHELL
+    end
+
+    if ENV['NO_CMAKE'] != "true"
+      centos_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
+        cd /vagrant
+        rm -fr .cmake-vagrant
+        mkdir -p .cmake-vagrant
+        cd .cmake-vagrant
+        cmake -G Ninja ..
+
+        export CTEST_TEST_TIMEOUT=1800
+        export CTEST_OUTPUT_ON_FAILURE=1
+        export CTEST_PARALLEL_LEVEL=20
+        cmake --build . --target verify
+      SHELL
+    end
+
+    if ENV['NO_AUTOTOOLS'] != "true"
+      centos_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
         cd /vagrant
         ./autogen.sh
         ./configure
