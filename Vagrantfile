@@ -15,15 +15,56 @@
 # - NO_CMAKE      -- do not run with cmake
 # - NO_AUTOTOOLS  -- do not run with autoconf/automake
 
-Vagrant.configure("2") do |config|
-  # to allow running boxes provisions in parallel, we can't share the same dirs
-  # via virtualbox, however sometimes it is the only way, so instead let's
-  # create an archive of HEAD (this way we will not have any trash there) and
-  # extract it for every box to the separate folder.
-  #
-  # P.S. we will change this --prefix with tar(1) --trasnform
-  system('git archive --prefix=libevent/ --output=.vagrant/libevent.tar HEAD')
 
+# To allow running boxes provisions in parallel, we can't share the same dirs
+# via virtualbox, however sometimes it is the only way, so instead let's
+# create an archive of HEAD (this way we will not have any trash there) and
+# extract it for every box to the separate folder.
+#
+# P.S. we will change this --prefix with tar(1) --trasnform
+system('git archive --prefix=libevent/ --output=.vagrant/libevent.tar HEAD')
+def extract_src(vm_name)
+  system('tar --overwrite --transform=s/libevent/libevent-' +
+          vm_name +
+          '/ -xf .vagrant/libevent.tar -C .vagrant/')
+end
+
+def cmake(vm_name)
+  if ENV['NO_CMAKE'] == "true"
+    return
+  end
+
+  vm_name.vm.provision "shell", privileged: false, inline: <<-SHELL
+    cd /vagrant
+    rm -fr .cmake-vagrant
+    mkdir -p .cmake-vagrant
+    cd .cmake-vagrant
+    cmake -G Ninja ..
+
+    export CTEST_TEST_TIMEOUT=1800
+    export CTEST_OUTPUT_ON_FAILURE=1
+    export CTEST_PARALLEL_LEVEL=20
+    cmake --build . --target verify
+  SHELL
+end
+def autotools(vm_name)
+  if ENV['NO_AUTOTOOLS'] == "true"
+    return
+  end
+
+  vm_name.vm.provision "shell", privileged: false, inline: <<-SHELL
+    cd /vagrant
+    ./autogen.sh
+    ./configure
+    make -j20 verify
+  SHELL
+end
+def buildtools(vm_name)
+  cmake(vm_name)
+  autotools(vm_name)
+end
+
+Vagrant.configure("2") do |config|
   config.vm.provider "virtualbox" do |vb|
     vb.memory = "512"
 
@@ -36,7 +77,7 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
   config.vm.define "ubuntu" do |ubuntu|
-    system('tar --overwrite --transform=s/libevent/libevent-linux/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('ubuntu')
 
     ubuntu.vm.box = "ubuntu/xenial64"
     ubuntu.vm.synced_folder ".vagrant/libevent-linux", "/vagrant",
@@ -51,33 +92,11 @@ Vagrant.configure("2") do |config|
       SHELL
     end
 
-    if ENV['NO_CMAKE'] != "true"
-      ubuntu.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        rm -fr .cmake-vagrant
-        mkdir -p .cmake-vagrant
-        cd .cmake-vagrant
-        cmake -G Ninja ..
-
-        export CTEST_TEST_TIMEOUT=1800
-        export CTEST_OUTPUT_ON_FAILURE=1
-        export CTEST_PARALLEL_LEVEL=20
-        cmake --build . --target verify
-      SHELL
-    end
-
-    if ENV['NO_AUTOTOOLS'] != "true"
-      ubuntu.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        ./autogen.sh
-        ./configure
-        make -j20 verify
-      SHELL
-    end
+    buildtools(ubuntu)
   end
 
   config.vm.define "ubuntu_x86" do |ubuntu_x86|
-    system('tar --overwrite --transform=s/libevent/libevent-linux_x86/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('ubuntu_x86')
 
     ubuntu_x86.vm.box = "ubuntu/xenial32"
     ubuntu_x86.vm.synced_folder ".vagrant/libevent-linux_x86", "/vagrant",
@@ -92,33 +111,11 @@ Vagrant.configure("2") do |config|
       SHELL
     end
 
-    if ENV['NO_CMAKE'] != "true"
-      ubuntu_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        rm -fr .cmake-vagrant
-        mkdir -p .cmake-vagrant
-        cd .cmake-vagrant
-        cmake -G Ninja ..
-
-        export CTEST_TEST_TIMEOUT=1800
-        export CTEST_OUTPUT_ON_FAILURE=1
-        export CTEST_PARALLEL_LEVEL=20
-        cmake --build . --target verify
-      SHELL
-    end
-
-    if ENV['NO_AUTOTOOLS'] != "true"
-      ubuntu_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        ./autogen.sh
-        ./configure
-        make -j20 verify
-      SHELL
-    end
+    buildtools(ubuntu_x86)
   end
 
   config.vm.define "freebsd" do |freebsd|
-    system('tar --overwrite --transform=s/libevent/libevent-freebsd/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('freebsd')
 
     freebsd.vm.box = "freebsd/FreeBSD-11.0-STABLE"
     freebsd.vm.synced_folder ".vagrant/libevent-freebsd", "/vagrant",
@@ -133,33 +130,11 @@ Vagrant.configure("2") do |config|
       SHELL
     end
 
-    if ENV['NO_CMAKE'] != "true"
-      freebsd.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        rm -fr .cmake-vagrant
-        mkdir -p .cmake-vagrant
-        cd .cmake-vagrant
-        cmake -G Ninja ..
-
-        export CTEST_TEST_TIMEOUT=1800
-        export CTEST_OUTPUT_ON_FAILURE=1
-        export CTEST_PARALLEL_LEVEL=20
-        cmake --build . --target verify
-      SHELL
-    end
-
-    if ENV['NO_AUTOTOOLS'] != "true"
-      freebsd.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        ./autogen.sh
-        ./configure
-        make -j20 verify
-      SHELL
-    end
+    buildtools(freebsd)
   end
 
   config.vm.define "netbsd" do |netbsd|
-    system('tar --overwrite --transform=s/libevent/libevent-netbsd/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('netbsd')
 
     netbsd.vm.box = "kja/netbsd-7-amd64"
     netbsd.vm.synced_folder ".vagrant/libevent-netbsd", "/vagrant",
@@ -172,33 +147,11 @@ Vagrant.configure("2") do |config|
       SHELL
     end
 
-    if ENV['NO_CMAKE'] != "true"
-      netbsd.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        rm -fr .cmake-vagrant
-        mkdir -p .cmake-vagrant
-        cd .cmake-vagrant
-        cmake -G Ninja ..
-
-        export CTEST_TEST_TIMEOUT=1800
-        export CTEST_OUTPUT_ON_FAILURE=1
-        export CTEST_PARALLEL_LEVEL=20
-        cmake --build . --target verify
-      SHELL
-    end
-
-    if ENV['NO_AUTOTOOLS'] != "true"
-      netbsd.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        ./autogen.sh
-        ./configure
-        make -j20 verify
-      SHELL
-    end
+    buildtools(netbsd)
   end
 
   config.vm.define "solaris" do |solaris|
-    system('tar --overwrite --transform=s/libevent/libevent-solaris/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('solaris')
 
     # XXX:
     # - solaris do not have '-or' it only has '-o' for find(1), so we can't use
@@ -261,7 +214,7 @@ Vagrant.configure("2") do |config|
   # known failures:
   # - sometimes vm hangs
   config.vm.define "osx" do |osx|
-    system('tar --overwrite --transform=s/libevent/libevent-osx/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('osx')
 
     osx.vm.synced_folder ".vagrant/libevent-osx", "/vagrant",
       type: "rsync", group: "wheel"
@@ -310,7 +263,7 @@ Vagrant.configure("2") do |config|
   end
 
   config.vm.define "centos" do |centos|
-    system('tar --overwrite --transform=s/libevent/libevent-centos/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('centos')
 
     centos.vm.synced_folder ".vagrant/libevent-centos", "/vagrant",
       type: "rsync", group: "wheel"
@@ -331,33 +284,11 @@ Vagrant.configure("2") do |config|
       SHELL
     end
 
-    if ENV['NO_CMAKE'] != "true"
-      centos.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        rm -fr .cmake-vagrant
-        mkdir -p .cmake-vagrant
-        cd .cmake-vagrant
-        cmake -G Ninja ..
-
-        export CTEST_TEST_TIMEOUT=1800
-        export CTEST_OUTPUT_ON_FAILURE=1
-        export CTEST_PARALLEL_LEVEL=20
-        cmake --build . --target verify
-      SHELL
-    end
-
-    if ENV['NO_AUTOTOOLS'] != "true"
-      centos.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        ./autogen.sh
-        ./configure
-        make -j20 verify
-      SHELL
-    end
+    buildtools(centos_x86)
   end
 
   config.vm.define "centos_x86" do |centos_x86|
-    system('tar --overwrite --transform=s/libevent/libevent-centos_x86/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('centos_x86')
 
     centos_x86.vm.synced_folder ".vagrant/libevent-centos_x86", "/vagrant",
       type: "rsync", group: "wheel"
@@ -378,35 +309,13 @@ Vagrant.configure("2") do |config|
       SHELL
     end
 
-    if ENV['NO_CMAKE'] != "true"
-      centos_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        rm -fr .cmake-vagrant
-        mkdir -p .cmake-vagrant
-        cd .cmake-vagrant
-        cmake -G Ninja ..
-
-        export CTEST_TEST_TIMEOUT=1800
-        export CTEST_OUTPUT_ON_FAILURE=1
-        export CTEST_PARALLEL_LEVEL=20
-        cmake --build . --target verify
-      SHELL
-    end
-
-    if ENV['NO_AUTOTOOLS'] != "true"
-      centos_x86.vm.provision "shell", privileged: false, inline: <<-SHELL
-        cd /vagrant
-        ./autogen.sh
-        ./configure
-        make -j20 verify
-      SHELL
-    end
+    buildtools(centos_x86)
   end
 
   # known failures:
   # - issues with timers (not enough allowed error)
   config.vm.define "win" do |win|
-    system('tar --overwrite --transform=s/libevent/libevent-win/ -xf .vagrant/libevent.tar -C .vagrant/')
+    extract_src('win')
 
     # 512MB not enough after libtool install, huh
     win.vm.provider "virtualbox" do |vb|
