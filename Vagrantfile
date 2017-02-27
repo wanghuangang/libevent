@@ -238,7 +238,8 @@ Vagrant.configure("2") do |config|
       domain.commandline :value => "Penryn,vendor=GenuineIntel"
     end
 
-    osx.vm.synced_folder ".vagrant/libevent-osx", "/vagrant", type: "nfs"
+    osx.vm.synced_folder ".vagrant/libevent-osx", "/vagrant",
+      type: "nfs", :mount_options => ["resvport"]
 
     osx.vm.box = "osx-mountain-lion-10.8-xcode"
     if ENV['NO_PKG'] != "true"
