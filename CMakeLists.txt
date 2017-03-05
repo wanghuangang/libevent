@@ -78,6 +78,12 @@ set(EVENT_NUMERIC_VERSION 0x02020001)
 # only a subset of names can be used, defaults to "beta"
 set(EVENT_STAGE_NAME ${EVENT_VERSION_STAGE})
 
+set(LIBEVENT_LIBRARIES
+    event
+    event_core
+    event_extra
+    CACHE STRING "Libevent libraries")
+
 # a list that defines what can set for EVENT_STAGE_VERSION
 set(EVENT__ALLOWED_STAGE_NAMES
 	rc
@@ -691,9 +697,8 @@ if (NOT EVENT__DISABLE_OPENSSL)
 
     include_directories(${OPENSSL_INCLUDE_DIR})
 
-    list(APPEND SRC_CORE bufferevent_openssl.c)
+    list(APPEND SRC_OPENSSL bufferevent_openssl.c)
     list(APPEND HDR_PUBLIC include/event2/bufferevent_ssl.h)
-    list(APPEND LIB_APPS ${OPENSSL_LIBRARIES})
 endif()
 
 if (NOT EVENT__DISABLE_THREAD_SUPPORT)
@@ -801,7 +806,6 @@ configure_file(
 # Create the libraries.
 #
 
-# TODO: Add dynamic versions of the libraries as well.
 add_library(event_core ${EVENT__LIBRARY_TYPE}
     ${HDR_PRIVATE}
     ${HDR_COMPAT}
@@ -814,6 +818,18 @@ add_library(event_extra ${EVENT__LIBRARY_TYPE}
     ${HDR_PUBLIC}
     ${SRC_CORE}
     ${SRC_EXTRA})
+
+if (OPENSSL_LIBRARIES)
+    add_library(event_openssl ${EVENT__LIBRARY_TYPE}
+        ${HDR_COMPAT}
+        ${SRC_OPENSSL})
+
+    target_link_libraries(event_openssl ${CMAKE_THREAD_LIBS_INIT}
+                                        ${LIB_PLATFORM}
+                                        ${OPENSSL_LIBRARIES})
+
+    list(APPEND LIBEVENT_LIBRARIES event_openssl)
+endif()
 
 # library exists for historical reasons; it contains the contents of
 # both libevent_core and libevent_extra. You shouldn’t use it; it may
@@ -836,30 +852,18 @@ if (EVENT__BUILD_SHARED_LIBRARIES)
 
     set(EVENT_EXTRA_FOR_TEST event_extra_static)
 
-   target_link_libraries(event_core ${OPENSSL_LIBRARIES}
-                                    ${CMAKE_THREAD_LIBS_INIT}
-                                    ${LIB_PLATFORM})
+    target_link_libraries(event_core ${CMAKE_THREAD_LIBS_INIT}
+                                     ${LIB_PLATFORM})
 
-   target_link_libraries(event ${OPENSSL_LIBRARIES}
-                               ${CMAKE_THREAD_LIBS_INIT}
-                               ${LIB_PLATFORM})
+    target_link_libraries(event ${CMAKE_THREAD_LIBS_INIT}
+                                ${LIB_PLATFORM})
 
-   target_link_libraries(event_extra ${OPENSSL_LIBRARIES}
-                                      ${CMAKE_THREAD_LIBS_INIT}
+    target_link_libraries(event_extra ${CMAKE_THREAD_LIBS_INIT}
                                       ${LIB_PLATFORM})
 
-  set_target_properties(event
-        PROPERTIES SOVERSION
-            ${EVENT_ABI_LIBVERSION})
-
-  set_target_properties(event_core
-        PROPERTIES SOVERSION
-            ${EVENT_ABI_LIBVERSION})
-
-  set_target_properties(event_extra
-        PROPERTIES SOVERSION
-            ${EVENT_ABI_LIBVERSION})
-
+    foreach(LIB ${LIBEVENT_LIBRARIES})
+        set_target_properties(${LIB} PROPERTIES SOVERSION ${EVENT_ABI_LIBVERSION})
+    endforeach()
 else (EVENT__BUILD_SHARED_LIBRARIES)
     set(EVENT_EXTRA_FOR_TEST event_extra)
 endif (EVENT__BUILD_SHARED_LIBRARIES)
@@ -867,6 +871,21 @@ endif (EVENT__BUILD_SHARED_LIBRARIES)
 #
 # Samples.
 #
+
+macro(sample_link_libraries sample)
+    target_link_libraries(${sample}
+        event_extra
+        ${LIB_APPS}
+        ${LIB_PLATFORM}
+    )
+
+    add_dependencies(${sample} event_extra)
+
+    if (OPENSSL_LIBRARIES)
+        add_dependencies(${sample} event_openssl)
+        target_link_libraries(${sample} event_openssl)
+    endif()
+endmacro()
 
 if (NOT EVENT__DISABLE_SAMPLES)
     set(SAMPLES
@@ -878,34 +897,22 @@ if (NOT EVENT__DISABLE_SAMPLES)
         http-connect
         time-test)
 
-    if (NOT EVENT__DISABLE_OPENSSL AND OPENSSL_LIBRARIES)
+    if (OPENSSL_LIBRARIES)
         # Special sample with more than one file.
         add_executable(https-client
             sample/https-client.c
             sample/openssl_hostname_validation.c
             sample/hostcheck.c)
 
-        target_link_libraries(https-client
-                    event_extra
-                    ${LIB_APPS}
-                    ${LIB_PLATFORM})
+        sample_link_libraries(https-client)
 
-        add_dependencies(https-client event_extra)
-
-        # Requires OpenSSL.
+        # Requires OpenSSL
         list(APPEND SAMPLES le-proxy)
     endif()
 
     foreach(SAMPLE ${SAMPLES})
-        add_executable(${SAMPLE}
-                    sample/${SAMPLE}.c)
-
-        target_link_libraries(${SAMPLE}
-                    event_extra
-                    ${LIB_APPS}
-                    ${LIB_PLATFORM})
-
-        add_dependencies(${SAMPLE} event_extra)
+        add_executable(${SAMPLE} sample/${SAMPLE}.c)
+        sample_link_libraries(${SAMPLE})
     endforeach()
 
     if (WIN32)
@@ -990,7 +997,9 @@ if (NOT EVENT__DISABLE_TESTS)
                 test/regress_util.c
                 test/tinytest.c
                 ${SRC_CORE}
-                ${SRC_EXTRA})
+                ${SRC_EXTRA}
+                ${SRC_OPENSSL}
+            )
 
             if (WIN32)
                 list(APPEND SRC_REGRESS test/regress_iocp.c)
@@ -1018,12 +1027,14 @@ if (NOT EVENT__DISABLE_TESTS)
             # generates a ton of warnings due to different link
             # attributes for all of the symbols)
             SET_TARGET_PROPERTIES(regress
-                            PROPERTIES COMPILE_DEFINITIONS
-              "EVENT_BUILDING_REGRESS_TEST=1")
+                PROPERTIES COMPILE_DEFINITIONS
+                "EVENT_BUILDING_REGRESS_TEST=1")
 
             target_link_libraries(regress
-                            ${LIB_APPS}
-                            ${LIB_PLATFORM})
+                ${OPENSSL_LIBRARIES}
+                ${LIB_APPS}
+                ${LIB_PLATFORM}
+            )
         else()
             message(WARNING "No suitable Python interpreter found, cannot generate regress tests!")
         endif()
@@ -1349,7 +1360,7 @@ foreach(p LIB BIN INCLUDE CMAKE)
 endforeach()
 
 # Export targets (This is used for other CMake projects to easily find the libraries and include files).
-export(TARGETS event event_extra event_core
+export(TARGETS ${LIBEVENT_LIBRARIES}
         FILE "${PROJECT_BINARY_DIR}/LibeventTargets.cmake")
 export(PACKAGE libevent)
 
@@ -1389,13 +1400,13 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/LibeventConfigVersion.cmake.in
                 @ONLY)
 
 # Define the public headers.
-set_target_properties(event event_core event_extra
+set_target_properties(${LIBEVENT_LIBRARIES}
     PROPERTIES PUBLIC_HEADER "${HDR_PUBLIC}")
 
 #
 # Install targets.
 #
-install(TARGETS event event_core event_extra
+install(TARGETS ${LIBEVENT_LIBRARIES}
         EXPORT LibeventTargets
         RUNTIME DESTINATION "${EVENT_INSTALL_BIN_DIR}" COMPONENT bin
         LIBRARY DESTINATION "${EVENT_INSTALL_LIB_DIR}" COMPONENT lib
@@ -1421,12 +1432,6 @@ install(EXPORT LibeventTargets
         DESTINATION
                     "${EVENT_INSTALL_CMAKE_DIR}"
                 COMPONENT dev)
-
-set(LIBEVENT_LIBRARIES
-        event
-        event_core
-        event_extra
-        CACHE STRING "Libevent libraries")
 
 message(STATUS "")
 message(STATUS "        ---( Libevent " ${EVENT_VERSION} " )---")
