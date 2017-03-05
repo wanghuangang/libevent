@@ -852,14 +852,9 @@ static void
 test_fork(void)
 {
 	char c;
-	int status;
+	siginfo_t infop;
 	struct event ev, sig_ev, usr_ev, existing_ev;
 	pid_t pid;
-	int wait_flags = 0;
-
-#ifdef EVENT__HAVE_WAITPID_WITH_WNOWAIT
-	wait_flags |= WNOWAIT;
-#endif
 
 	setup_test("After fork: ");
 
@@ -933,15 +928,15 @@ test_fork(void)
 		tt_fail_perror("write");
 	}
 
-	TT_BLATHER(("Before waitpid"));
-	if (waitpid(pid, &status, wait_flags) == -1) {
-		perror("waitpid");
+	TT_BLATHER(("Before waitid"));
+	if (waitid(P_PID, pid, &infop, WEXITED | WNOWAIT) == -1) {
+		fprintf(stdout, "FAILED (waitid)\n");
 		exit(1);
 	}
-	TT_BLATHER(("After waitpid"));
+	TT_BLATHER(("After waitid"));
 
-	if (WEXITSTATUS(status) != 76) {
-		fprintf(stdout, "FAILED (exit): %d\n", WEXITSTATUS(status));
+	if (infop.si_status != 76) {
+		fprintf(stdout, "FAILED (exit): %d\n", infop.si_status);
 		exit(1);
 	}
 
