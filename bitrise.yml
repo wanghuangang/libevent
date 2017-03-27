@@ -1,0 +1,29 @@
+---
+format_version: 1.3.1
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+trigger_map:
+- push_branch: "*"
+  workflow: primary
+- pull_request_source_branch: "*"
+  workflow: primary
+workflows:
+  primary:
+    steps:
+    - activate-ssh-key@3.1.1:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@3.4.2: {}
+    - script@1.1.3:
+        title: make
+        inputs:
+        - content: |-
+            set -e
+            set -x
+
+            echo deb http://archive.ubuntu.com/ubuntu/ zesty main restricted > /etc/apt/sources.list.d/zesty.list
+            apt update
+            apt install --yes cmake/zesty ninja-build
+
+            mkdir libevent
+            cd libevent
+            cmake -d -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_TOOLCHAIN=gcc -DEVENT__DISABLE_OPENSSL=ON -G Ninja /bitrise/src
+            ninja
