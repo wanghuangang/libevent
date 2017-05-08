@@ -56,7 +56,6 @@ struct evhttp_connection {
 	 * server */
 	TAILQ_ENTRY(evhttp_connection) next;
 
-	evutil_socket_t fd;
 	struct bufferevent *bufev;
 
 	struct event retry_ev;		/* for retrying connects */

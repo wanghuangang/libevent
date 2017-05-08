@@ -718,16 +718,6 @@ void evhttp_connection_free(struct evhttp_connection *evcon);
 EVENT2_EXPORT_SYMBOL
 void evhttp_connection_free_on_completion(struct evhttp_connection *evcon);
 
-/** sets the ip address from which http connections are made */
-EVENT2_EXPORT_SYMBOL
-void evhttp_connection_set_local_address(struct evhttp_connection *evcon,
-    const char *address);
-
-/** sets the local port from which http connections are made */
-EVENT2_EXPORT_SYMBOL
-void evhttp_connection_set_local_port(struct evhttp_connection *evcon,
-    ev_uint16_t port);
-
 /** Sets the timeout in seconds for events related to this connection */
 EVENT2_EXPORT_SYMBOL
 void evhttp_connection_set_timeout(struct evhttp_connection *evcon,

@@ -1882,9 +1882,6 @@ http_dispatcher_test(void *arg)
 	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
 	tt_assert(evcon);
 
-	/* also bind to local host */
-	evhttp_connection_set_local_address(evcon, "127.0.0.1");
-
 	/*
 	 * At this point, we want to schedule an HTTP GET request
 	 * server using our make request method.
@@ -3621,7 +3618,6 @@ http_simple_test_impl(void *arg, int ssl, int dirty)
 	evcon = evhttp_connection_base_bufferevent_new(
 		data->base, NULL, bev, "127.0.0.1", hs.port);
 	tt_assert(evcon);
-	evhttp_connection_set_local_address(evcon, "127.0.0.1");
 
 	req = evhttp_request_new(http_request_done, (void*) BASIC_REQUEST_BODY);
 	tt_assert(req);
@@ -3666,8 +3662,6 @@ http_connection_retry_test_basic(void *arg, const char *addr, struct evdns_base 
 		tt_assert(!evhttp_connection_set_flags(evcon, EVHTTP_CON_REUSE_CONNECTED_ADDR));
 
 	evhttp_connection_set_timeout(evcon, 1);
-	/* also bind to local host */
-	evhttp_connection_set_local_address(evcon, "127.0.0.1");
 
 	/*
 	 * At this point, we want to schedule an HTTP GET request
@@ -3998,9 +3992,6 @@ http_data_length_constraints_test_impl(void *arg, int read_on_write_error)
 	if (read_on_write_error)
 		tt_assert(!evhttp_connection_set_flags(evcon, EVHTTP_CON_READ_ON_WRITE_ERROR));
 
-	/* also bind to local host */
-	evhttp_connection_set_local_address(evcon, "127.0.0.1");
-
 	/*
 	 * At this point, we want to schedule an HTTP GET request
 	 * server using our make request method.
@@ -4111,7 +4102,6 @@ http_lingering_close_test_impl(void *arg, int lingering)
 
 	evcon = evhttp_connection_base_new(data->base, NULL, "127.0.0.1", port);
 	tt_assert(evcon);
-	evhttp_connection_set_local_address(evcon, "127.0.0.1");
 
 	/*
 	 * At this point, we want to schedule an HTTP GET request
