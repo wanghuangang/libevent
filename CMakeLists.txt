@@ -983,6 +983,12 @@ if (NOT EVENT__DISABLE_TESTS)
 
             add_executable(regress ${SRC_REGRESS})
 
+            # While building the test suite we should export logging internals
+            # to cover it.
+            set_target_properties(regress
+                                  PROPERTIES COMPILE_DEFINITIONS
+                                  EVENT_BUILDING_REGRESS_TEST)
+
             target_link_libraries(regress
                                   ${LIB_APPS}
                                   ${LIB_PLATFORM}
