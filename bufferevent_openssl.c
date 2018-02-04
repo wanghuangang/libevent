@@ -659,6 +659,9 @@ do_write(struct bufferevent_openssl *bev_ssl, int atmost)
 	else
 		atmost = bufferevent_get_write_max_(&bev_ssl->bev);
 
+	/* Try to send as many as we can to avoid nagle effect */
+	evbuffer_pullup(output, -1);
+
 	n = evbuffer_peek(output, atmost, NULL, space, 8);
 	if (n < 0)
 		return OP_ERR | result;
