@@ -2105,6 +2105,72 @@ end:
 	evdns_close_server_port(dns_port);
 }
 
+static int suspend_resumed = 0;
+static void
+do_suspend_resume(int fd, short events, void *arg)
+{
+	struct evdns_base *dns = arg;
+	struct sockaddr_in sin;
+	ev_socklen_t len = sizeof(sin);
+	struct sockaddr *sa = (struct sockaddr *)&sin;
+
+	tt_assert(evdns_base_get_nameserver_addr(dns, 0, sa, len) == sizeof(sin));
+	tt_assert(!evdns_base_clear_nameservers_and_suspend(dns));
+	tt_assert(!evdns_base_nameserver_sockaddr_add(dns, sa, len, 0));
+	tt_assert(!evdns_base_resume(dns));
+	suspend_resumed = 1;
+
+end:
+	;
+}
+static void
+evdns_base_clear_nameservers_and_suspend_test(void *arg)
+{
+	struct basic_test_data *data = arg;
+	struct event_base *base = data->base;
+	struct evdns_base *dns = NULL;
+	struct evdns_server_port *dns_port = NULL;
+	ev_uint16_t portnum = 0;
+	char buf[64];
+
+	struct generic_dns_callback_result r[20];
+	int i;
+	
+	struct timeval timeout = { 1, 500000 };
+
+	dns_port = regress_get_dnsserver(base, &portnum, NULL,
+		regress_dns_server_cb, reissue_table);
+	tt_assert(dns_port);
+	/** Fail server, to trigger probing */
+	evdns_close_server_port(dns_port);
+
+	evutil_snprintf(buf, sizeof(buf), "127.0.0.1:%d", (int)portnum);
+
+	dns = evdns_base_new(base, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+	tt_assert(!evdns_base_set_option(dns, "timeout", "1"));
+	tt_assert(!evdns_base_set_option(dns, "attempts:", "3"));
+	tt_assert(!evdns_base_set_option(dns, "max-timeouts:", "1"));
+	tt_assert(!evdns_base_set_option(dns, "initial-probe-timeout", "0.1"));
+	tt_assert(!evdns_base_nameserver_ip_add(dns, buf));
+
+	for (i = 0; i < 20; ++i)
+		evdns_base_resolve_ipv4(dns, "foof.example.com", 0, generic_dns_callback, &r[i]);
+
+	n_replies_left = 20;
+	exit_base = base;
+
+	tt_assert(!event_base_once(
+		base, -1, EV_TIMEOUT, do_suspend_resume, dns, &timeout));
+
+	event_base_dispatch(base);
+
+	tt_int_op(n_replies_left, ==, 0);
+	tt_int_op(suspend_resumed, ==, 1);
+
+end:
+	evdns_base_free(dns, 0);
+}
+
 
 #define DNS_LEGACY(name, flags)					       \
 	{ #name, run_legacy_test_fn, flags|TT_LEGACY, &legacy_setup,   \
@@ -2157,6 +2223,10 @@ struct testcase_t dns_testcases[] = {
 	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 	{ "client_fail_requests_getaddrinfo",
 	  dns_client_fail_requests_getaddrinfo_test,
+	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
+
+	{ "evdns_base_clear_nameservers_and_suspend_test",
+	  evdns_base_clear_nameservers_and_suspend_test,
 	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 
 	END_OF_TESTCASES
