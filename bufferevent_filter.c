@@ -305,6 +305,7 @@ be_filter_process_input(struct bufferevent_filtered *bevf,
 {
 	enum bufferevent_filter_result res;
 	struct bufferevent *bev = downcast(bevf);
+	struct bufferevent *underlying = bevf->underlying;
 
 	if (state == BEV_NORMAL) {
 		/* If we're in 'normal' mode, don't urge data on the filter
@@ -320,18 +321,31 @@ be_filter_process_input(struct bufferevent_filtered *bevf,
 			limit = bev->wm_read.high -
 			    evbuffer_get_length(bev->input);
 
-		res = bevf->process_in(bevf->underlying->input,
+		res = bevf->process_in(underlying->input,
 		    bev->input, limit, state, bevf->context);
 
 		if (res == BEV_OK)
 			*processed_out = 1;
 	} while (res == BEV_OK &&
 		 (bev->enabled & EV_READ) &&
-		 evbuffer_get_length(bevf->underlying->input) &&
+		 evbuffer_get_length(underlying->input) &&
 		 !be_readbuf_full(bevf, state));
 
-	if (*processed_out)
+	if (*processed_out) {
 		BEV_RESET_GENERIC_READ_TIMEOUT(bev);
+
+		bufferevent_trigger_nolock_(bev, EV_READ, 0);
+		if (evbuffer_get_length(underlying->input) > 0 &&
+			be_readbuf_full(bevf, state)) {
+			/* data left in underlying buffer and filter input buffer
+			 * hit its read high watermark.
+			 * Schedule callback to avoid data gets stuck in underlying
+			 * input buffer.
+			 */
+			evbuffer_cb_set_flags(bev->input, bevf->inbuf_cb,
+				EVBUFFER_CB_ENABLED);
+		}
+	}
 
 	return res;
 }
@@ -458,23 +472,6 @@ be_filter_read_nolock_(struct bufferevent *underlying, void *me_)
 		/* XXXX use return value */
 		res = be_filter_process_input(bevf, state, &processed_any);
 		(void)res;
-
-		/* XXX This should be in process_input, not here.  There are
-		 * other places that can call process-input, and they should
-		 * force readcb calls as needed. */
-		if (processed_any) {
-			bufferevent_trigger_nolock_(bufev, EV_READ, 0);
-			if (evbuffer_get_length(underlying->input) > 0 &&
-				be_readbuf_full(bevf, state)) {
-				/* data left in underlying buffer and filter input buffer
-				 * hit its read high watermark.
-				 * Schedule callback to avoid data gets stuck in underlying
-				 * input buffer.
-				 */
-				evbuffer_cb_set_flags(bufev->input, bevf->inbuf_cb,
-					EVBUFFER_CB_ENABLED);
-			}
-		}
 	}
 }
 

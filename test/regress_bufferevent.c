@@ -121,6 +121,11 @@ errorcb(struct bufferevent *bev, short what, void *arg)
 {
 	test_ok = -2;
 }
+static void
+errorcb_flush(struct bufferevent *bev, short what, void *arg)
+{
+	bufferevent_flush(bev, EV_READ, BEV_FINISHED);
+}
 
 static void
 test_bufferevent_impl(int use_pair, int flush)
@@ -534,7 +539,7 @@ bufferevent_output_filter(struct evbuffer *src, struct evbuffer *dst,
 }
 
 static void
-test_bufferevent_filters_impl(int use_pair, int disable)
+test_bufferevent_filters_impl(int use_pair, int disable, int wm)
 {
 	struct bufferevent *bev1 = NULL, *bev2 = NULL;
 	struct bufferevent *bev1_base = NULL, *bev2_base = NULL;
@@ -552,6 +557,11 @@ test_bufferevent_filters_impl(int use_pair, int disable)
 		bev1 = bufferevent_socket_new(NULL, pair[0], 0);
 		bev2 = bufferevent_socket_new(NULL, pair[1], 0);
 	}
+	if (wm) {
+		struct timeval tv = { 0, 30000 };
+		bufferevent_set_timeouts(bev2, &tv, NULL);
+		bufferevent_setwatermark(bev2, EV_READ, sizeof(buffer)/3, 0);
+	}
 	bev1_base = bev1;
 	bev2_base = bev2;
 
@@ -565,7 +575,7 @@ test_bufferevent_filters_impl(int use_pair, int disable)
 	bev2 = bufferevent_filter_new(bev2, bufferevent_input_filter,
 				      NULL, BEV_OPT_CLOSE_ON_FREE, NULL, NULL);
 	bufferevent_setcb(bev1, NULL, writecb, errorcb, NULL);
-	bufferevent_setcb(bev2, readcb, NULL, errorcb, NULL);
+	bufferevent_setcb(bev2, readcb, NULL, errorcb_flush, NULL);
 
 	tt_ptr_op(bufferevent_get_underlying(bev1), ==, bev1_base);
 	tt_ptr_op(bufferevent_get_underlying(bev2), ==, bev2_base);
@@ -591,13 +601,22 @@ end:
 }
 
 static void test_bufferevent_filters(void)
-{ test_bufferevent_filters_impl(0, 0); }
+{ test_bufferevent_filters_impl(0, 0, 0); }
 static void test_bufferevent_pair_filters(void)
-{ test_bufferevent_filters_impl(1, 0); }
+{ test_bufferevent_filters_impl(1, 0, 0); }
 static void test_bufferevent_filters_disable(void)
-{ test_bufferevent_filters_impl(0, 1); }
+{ test_bufferevent_filters_impl(0, 1, 0); }
 static void test_bufferevent_pair_filters_disable(void)
-{ test_bufferevent_filters_impl(1, 1); }
+{ test_bufferevent_filters_impl(1, 1, 0); }
+
+static void test_bufferevent_filters_wm(void)
+{ test_bufferevent_filters_impl(0, 0, 1); }
+static void test_bufferevent_pair_filters_wm(void)
+{ test_bufferevent_filters_impl(1, 0, 1); }
+static void test_bufferevent_filters_wm_disable(void)
+{ test_bufferevent_filters_impl(0, 1, 1); }
+static void test_bufferevent_pair_filters_wm_disable(void)
+{ test_bufferevent_filters_impl(1, 1, 1); }
 
 
 static void
@@ -1348,6 +1367,10 @@ struct testcase_t bufferevent_testcases[] = {
 	LEGACY(bufferevent_pair_filters, TT_ISOLATED),
 	LEGACY(bufferevent_filters_disable, TT_ISOLATED),
 	LEGACY(bufferevent_pair_filters_disable, TT_ISOLATED),
+	LEGACY(bufferevent_filters_wm, TT_ISOLATED),
+	LEGACY(bufferevent_pair_filters_wm, TT_ISOLATED),
+	LEGACY(bufferevent_filters_wm_disable, TT_ISOLATED),
+	LEGACY(bufferevent_pair_filters_wm_disable, TT_ISOLATED),
 	{ "bufferevent_connect", test_bufferevent_connect, TT_FORK|TT_NEED_BASE,
 	  &basic_setup, (void*)"" },
 	{ "bufferevent_connect_defer", test_bufferevent_connect,
@@ -1415,6 +1438,8 @@ struct testcase_t bufferevent_iocp_testcases[] = {
 	LEGACY(bufferevent_watermarks, TT_ISOLATED|TT_ENABLE_IOCP),
 	LEGACY(bufferevent_filters, TT_ISOLATED|TT_ENABLE_IOCP),
 	LEGACY(bufferevent_filters_disable, TT_ISOLATED|TT_ENABLE_IOCP),
+	LEGACY(bufferevent_filters_wm, TT_ISOLATED|TT_ENABLE_IOCP),
+	LEGACY(bufferevent_filters_wm_disable, TT_ISOLATED|TT_ENABLE_IOCP),
 	{ "bufferevent_connect", test_bufferevent_connect,
 	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup, (void*)"" },
 	{ "bufferevent_connect_defer", test_bufferevent_connect,
