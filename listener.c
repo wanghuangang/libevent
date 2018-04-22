@@ -37,6 +37,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <mswsock.h>
+#include <windows.h>
 #endif
 #include <errno.h>
 #ifdef EVENT__HAVE_SYS_SOCKET_H
